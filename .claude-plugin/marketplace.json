@@ -1,0 +1,14 @@
+{
+  "name": "pair-watch",
+  "description": "Marketplace for the pair-watch plugin: two-seat coding-agent pairing (implementer + read-only watcher) with session-log auditing.",
+  "owner": {
+    "name": "inakaegg"
+  },
+  "plugins": [
+    {
+      "name": "pair-watch",
+      "source": "./plugins/pair-watch",
+      "description": "Cross-vendor pair programming for coding agents: implementer + read-only watcher with session-log auditing. Claude peer via SendMessage; Codex peer via file inbox/outbox + rollout audit."
+    }
+  ]
+}
