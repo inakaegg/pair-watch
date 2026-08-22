@@ -74,8 +74,8 @@ Auditing is the point of the watcher role, so be aware of what it touches:
   (`~/.claude/projects/<slug>/<id>.jsonl`) and Codex rollouts
   (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`) — to verify start declarations, check claimed
   user approvals, and audit reports against what actually happened.
-- It writes coordination files into your repository: the task contract (`_ai/tasks/<slug>/TASK.md`) and, with a Codex peer, `pair-inbox.md` / `pair-outbox.md` in the same directory of the main checkout. Keep `_ai/` out of version control (add it to `.gitignore`).
-- For work that changes code, the implementer creates a task branch and a separate git worktree; nothing is done on the `main` checkout.
+- The pair writes coordination files into your repository: the task contract (`_ai/tasks/<slug>/TASK.md`) and, with a Codex peer, `pair-inbox.md` / `pair-outbox.md` in that same `_ai/tasks/<slug>/` directory of the main checkout. Keep `_ai/` out of version control (add it to `.gitignore`).
+- For work that changes code, a task branch and a separate git worktree are created — normally by the implementer, or by the watcher on its behalf when a Codex sandbox cannot write to `.git`. Nothing is done on the `main` checkout.
 - Everything stays on your machine. Nothing is sent anywhere by this skill.
 
 ## Install
@@ -96,13 +96,13 @@ The peer chat may start empty. You do not have to keep writing to both sides.
 ### Pairing with a Codex CLI chat
 
 1. Start Codex CLI in the same repository, in another terminal (Codex is installed separately).
-2. In the Claude chat, type `/pair-watch <one-line task>`. The Claude side becomes the watcher.
+2. In the Claude chat, type `/pair-watch <one-line task> — peer: Codex CLI`. Saying that the peer is Codex is what makes the Claude side the watcher; without it, Claude looks for a Claude peer and waits.
 3. The first time only, the watcher asks you to paste one line into the Codex chat ("Read `<inbox path>` and follow it."). From then on the Codex implementer watches the inbox itself.
 
 ## Tested with
 
 - Claude Code 2.1.224 or later (cross-session messaging: SendMessage / ListAgents / Monitor)
-- Codex CLI 0.147.x (rollout layout `~/.codex/sessions/YYYY/MM/DD/`)
+- Codex CLI 0.147.x, only when pairing with a Codex chat (rollout layout `~/.codex/sessions/YYYY/MM/DD/`)
 
 Log audit reads the session files both CLIs keep locally; see "What it reads and writes" for the paths.
 
@@ -112,6 +112,7 @@ Typical symptoms and what they mean:
 
 - *No peer found / no reply to the identification question within 15 minutes* — the other chat is
   not started, or ListAgents/SendMessage changed. The skill reports and waits for you.
+- *The watcher is waiting for the first paste into the Codex chat* — on first start it asks you for one paste and waits up to 15 minutes; paste the line and it resumes.
 - *A Codex peer never reacts to the inbox* — the inbox-watch may have ended (30-minute cap) or the
   environment requires approval per command, where the watch cannot run. Type "check the inbox"
   into the Codex chat; the skill falls back to this manual nudge flow by design.

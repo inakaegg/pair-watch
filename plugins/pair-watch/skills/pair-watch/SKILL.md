@@ -42,7 +42,7 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
 
 ## Procedure
 
-1. **Fix task, role, and peer type** — The task and any role given in the argument take priority.
+1. **Fix task, role, and peer type** — The task and any role given in the argument take priority. State the peer type in the argument when the peer is a Codex chat (for example `/pair-watch <task> — peer: Codex CLI`); when nothing in the argument or the conversation says otherwise, assume a Claude peer.
    Without an explicit role, decide in this order: (a) if the peer is a Codex chat, you are the
    watcher (**Codex can only be the implementer**; the watcher is always Claude). (b) otherwise
    decide by your own model: deep-reasoning class → watcher; others → implementer. (c) if your model
