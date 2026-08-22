@@ -4,10 +4,9 @@
   },
   "rules": {
     "preset-ja-technical-writing": {
-      "sentence-length": false,
-      "max-comma": false,
-      "no-exclamation-question-mark": false,
-      "arabic-kanji-numbers": false,
+      "sentence-length": {
+        "max": 150
+      },
       "ja-no-mixed-period": false,
       "no-mix-dearu-desumasu": false,
       "no-doubled-joshi": false
