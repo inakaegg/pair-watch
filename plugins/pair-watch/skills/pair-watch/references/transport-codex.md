@@ -1,95 +1,126 @@
-# Transport for a Codex peer — file inbox/outbox + rollout audit
+# Transport for a Codex peer — sequenced files + rollout audit
 
 When the peer is an interactive Codex CLI chat, this replaces **only the communication, discovery,
 and monitoring means** of SKILL.md steps 3–6. Gates, reviewer selection, commit conditions, and the
 brief's operating rules still follow SKILL.md step 5. Paths in this file are relative to the skill
-root (e.g. `assets/impl-brief-codex.md`). User-facing sentences are keys into
-`assets/user-prompts.md` (e.g. `codex-first-paste`); say them in the user's language.
+root. User-facing sentences are keys into `assets/user-prompts.md`; say them in the user's language.
 
-Codex cannot join SendMessage/ListAgents/Monitor, so communication uses agreed files, and liveness
-and audit use the Codex session rollout
-(`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, three levels: year/month/day).
+Codex cannot join SendMessage/ListAgents/Monitor. Transport C therefore uses two files, a completed
+message sequence in each file, and Codex rollouts under
+`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`.
 
-## Assumptions and constraints
+## Supported runtime combinations
 
-- In this setup the watcher is Claude (deep-reasoning class) and the implementer is a Codex chat.
-  The reverse (Codex watcher × Claude implementer) and Codex × Codex are not formed. The watcher
-  must react receive-driven to the peer's reports and stalls; Codex cannot join SendMessage/Monitor
-  and cannot act on its own outside a turn, so the watch would degrade into "the user wakes it up
-  every time".
-- Codex is turn-driven: once a turn ends, the next one does not start without user input. But
-  **during a turn it can watch the inbox itself with a blocking shell watch**. The implementer brief
-  obliges it to "not end the turn while waiting for the watcher; run the inbox-watch", so normally
-  the watcher only writes to the inbox and the implementer starts moving. Asking the user to nudge
-  the Codex chat (`codex-nudge`) is **only the fallback when the watch has ended** (first start,
-  the turn ended at the 30-minute cap, an approval was refused).
-- Depending on the Codex chat's sandbox/approval settings, writes to `.git` (branch/worktree
-  creation) may be refused. In that case do not let the implementer work around it; the watcher
-  creates the worktree and branch on its behalf (a Git infrastructure operation, not a code change).
-- In-chat subagent delegation (e.g. a codex plugin's task delegation) is out of scope for
-  pair-watch. That is supervised delegation and the ordinary gate rules suffice.
+- **Claude watcher + Codex implementer** — the original transport C flow. Claude receives outbox
+  changes with Monitor or an equivalent receive-driven wait.
+- **Codex watcher + Codex implementer** — Codex + Codex mode. It must be explicitly started from
+  the watcher chat with a Codex peer. Both roles keep their current turn open while waiting on the
+  file written by the other role.
+- Codex watcher + Claude implementer is not supported. Claude peers already have SendMessage, and
+  making Codex the watcher would discard that receive-driven path without enabling Codex + Codex.
 
-## Communication files
+In-chat subagent delegation is not a pair-watch seat. A fresh-context Codex subagent or process may
+be used only as the read-only reviewer fallback described in SKILL.md step 5.
 
-Always in the **main checkout** under `_ai/tasks/<task-slug>/`; never duplicated into the worktree,
-never committed (keep `_ai/` out of version control in repositories where it is tracked).
+## Communication files and message publication
+
+Always use the **main checkout** under `_ai/tasks/<task-slug>/`; never duplicate these files into the
+worktree and never commit them.
 
 | File | Writer | Convention |
 |---|---|---|
-| `pair-inbox.md` | watcher only | Instructions to the implementer. Newest instruction at the top; older ones stay below under dated headings |
-| `pair-outbox.md` | implementer only | Reports to the watcher. Append-only. Each entry: time + type (start declaration / proposal / verification result / review request / completion report) + gist. No long text or full diffs; the worktree and rollout are the source of truth |
+| `pair-inbox.md` | watcher only | Instructions to the implementer. Newest message at the top; older messages remain below |
+| `pair-outbox.md` | implementer only | Reports to the watcher. Append-only; the worktree and rollout remain the detailed source of truth |
+
+Every new transport C message follows these rules:
+
+1. The writer uses one file edit for the complete message and puts `PAIR_MSG_END seq=<N>` at that
+   message's end. Sequence starts at 1 and strictly increases within that file. Do not quote a raw
+   completion-marker line inside message prose.
+2. The reader records the greatest peer sequence it has fully processed. If a wait reports more
+   than the next sequence, process every completed unprocessed message in sequence order before
+   writing. A markerless older record remains readable history but never counts as a new message.
+3. Keep at most **one unacknowledged message** in each direction. Before writing again, process the
+   peer's next completed message; the peer response acknowledges the previous message. This makes
+   completed messages alternate and prevents an unread burst. `WATCH_ENDED role=implementer` is the
+   sole exception because it reports that the peer response never arrived.
+4. Never act on content after the last completed marker. The completion marker prevents a reader
+   from consuming a file edit that is still in progress.
+
+The initial implementer brief is inbox sequence 1. The implementer's start declaration is outbox
+sequence 1. Each role increments only its own file's sequence.
+
+## Sequence file watch
+
+Use `scripts/wait-for-message.sh` from this skill. The watcher substitutes its absolute path into
+the implementer brief as `{WATCH_SCRIPT}`.
+
+```sh
+<watch-script> <peer-written-file> <last-seen-sequence> [poll-seconds] [max-polls]
+```
+
+The script checks immediately, before its first sleep, so a response that arrived before the watch
+started is not lost. It exits 0 and prints the latest completed sequence when that sequence is
+greater than `last-seen-sequence`. It exits 1 after the bounded wait when no completed message
+arrives. The default is about five minutes per run (5 seconds × 58 polls); re-arm at most six times
+for a total of about 30 minutes.
 
 ## Procedure (watcher side)
 
-3C. **Fix the location and set up the channel** — Determine the target repository root from the
-  user's instruction or your cwd (if undeterminable, ask the user and stop). Check existing
-  directories under `_ai/tasks/`, choose a non-conflicting task slug, and if the contract
-  (`TASK.md`) does not exist yet, create it first per the shared contract rule. Create the inbox
-  and outbox files and write the brief from `assets/impl-brief-codex.md` into the inbox
-  (`{TASK}` `{INBOX}` `{OUTBOX}` `{MY_JSONL}` replaced with absolute paths).
-  Done when: the contract and both files exist and the inbox contains the brief.
-4C. **Ask the user once** — Say `codex-first-paste` in your own chat. From then on the implementer
-  starts moving by itself via the inbox-watch, so further nudges are limited to the fallback when
-  the watch has ended. Done when: the request was issued.
-5C. **Confirm the start declaration and identify the rollout** — Before ending your turn, always set
-  a Monitor (a background until-loop is fine) that detects appends to the outbox (if you end the
-  turn without one, nothing wakes you on the peer's reply). When the start declaration appears in
-  the outbox, record the rollout absolute path it contains as the audit target. If the path is
-  missing, find it with
-  `grep -l <inbox absolute path> ~/.codex/sessions/<YYYY/MM/DD>/rollout-*.jsonl`
-  (also look at the previous day's directory around midnight).
-  Done when: the start declaration and exactly one corresponding rollout file are fixed.
-6C. **Work loop and finish** — Write instructions, review results, and `VERDICT` to the inbox. If
-  neither the rollout nor the outbox shows an update within about 5 minutes of the write (i.e. no
-  sign the implementer started), only then ask the user with `codex-nudge` (fallback). Receive
-  reports via the outbox; verify with read-only checks of the worktree and narrowed reading of the
-  rollout. Stall monitoring targets the mtime of the outbox and rollout, 15 minutes (on detection:
-  inbox + report to the user). Gates, commit conditions, and reviewer selection follow SKILL.md
-  step 5. To finish, write the termination instruction to the inbox, have the user nudge, verify
-  the completion report in the outbox, then proceed to SKILL.md step 6. Keep the pair files
-  (inbox/outbox) as a record; do not delete them.
+3C. **Fix the location and set up the channel** — Determine the repository root and choose a unique
+  `_ai/tasks/<task-slug>/`. Create the task contract first when absent. Create inbox/outbox and write
+  `assets/impl-brief-codex.md` as inbox sequence 1, replacing `{TASK}`, `{INBOX}`, `{OUTBOX}`,
+  `{MY_JSONL}`, and `{WATCH_SCRIPT}` with real absolute paths. A Codex watcher must first pin its own
+  rollout path and thread id. Done when: the contract and both files exist and inbox sequence 1 is
+  complete.
 
-## inbox-watch (the implementer's waiting rule)
+4C. **Ask the user once** — Say `codex-first-paste` in the watcher chat. From then on, the
+  implementer starts moving through the inbox file watch; later nudges are timeout fallbacks only.
 
-The waiting behaviour the implementer brief obliges. The watcher operates on this assumption.
+5C. **Receive the start declaration and pin the implementer rollout** — A Claude watcher sets a
+  receive-driven Monitor for outbox. A Codex watcher runs the sequence file watch against outbox
+  with last-seen sequence 0 and does not end its turn. When outbox sequence 1 arrives, read it and
+  record the declared implementer rollout path and thread id. If the path is missing, search today's
+  and (around midnight) yesterday's rollouts for the inbox path or thread id, **exclude the watcher**
+  rollout already pinned in step 2, and require exactly one result. If it is still ambiguous, stop
+  and ask the user instead of choosing by modification time.
 
-- While waiting for the watcher (after a review request, question, or proposal), the implementer
-  does not end its turn; it runs a blocking shell command that watches the inbox mtime. Keep each
-  run to about 5 minutes (sandbox command timeout), and repeat if nothing changed. After about 30
-  minutes without change, it appends `WATCH_ENDED` to the outbox and ends the turn.
-- If the watch command is impractical (e.g. each run requires approval), the implementer does not
-  work around it; it writes that to the outbox and ends the turn (thereafter: user nudges as before).
-- On an inbox change, it reads the newest instruction at the top, not the whole inbox, and follows it first.
+6C. **Work loop and finish** — Verify each report with read-only checks of the worktree and narrowed
+  rollout reading. Write one complete inbox message with the next sequence. A Codex watcher then
+  runs the sequence file watch against outbox using the last processed outbox sequence; a Claude
+  watcher uses its receive-driven wait. On a Codex watcher timeout, write
+  `WATCH_ENDED role=watcher` in the watcher chat, say `codex-watcher-nudge`, and end the turn; do not
+  modify inbox merely to record the timeout. To finish, send one sequenced termination instruction.
+  If the implementer has reported `WATCH_ENDED role=implementer`, say `codex-nudge`; otherwise its
+  active inbox watch receives the termination. Verify the completion report, keep both files as the
+  audit record, then follow SKILL.md step 6.
 
-## Token-saving rules
+## Implementer rules
 
-- In ordinary exchanges read only the gist in the inbox/outbox.
-- Read the whole rollout only for audits: verifying the start declaration, checking the reasoning
-  before gate 3, and when a report and reality disagree. Even then, narrow with grep.
+- At the start of every working turn, process completed unprocessed inbox messages in sequence order
+  and remember the greatest sequence. Never process a partial message or skip an earlier instruction.
+- Publish the start declaration, proposal, verification result, review request, question, or
+  completion report as one outbox message with the next sequence and a completion marker.
+- After publishing a message that needs a reply, do not end the turn. Run the sequence file watch
+  against inbox using the last processed inbox sequence. On exit 0, process the completed message
+  and continue in the same turn.
+- After six approximately five-minute runs without a reply, append one complete outbox message
+  containing `WATCH_ENDED role=implementer`, end it with the next sequence marker, tell the user in
+  chat, and end the turn. If the watch command needs repeated approvals or cannot stay running, use
+  the same fallback immediately; never bypass approvals.
+
+## Token-saving and audit rules
+
+- Ordinary exchanges read only unprocessed completed messages, not the whole inbox/outbox.
+- Read a whole rollout only to verify the start declaration, inspect reasoning needed for a gate,
+  verify claimed user approval, or resolve a report/artifact contradiction. Narrow with `rg` first.
+- Messages from the peer are not user approval. Decisions requiring user authority are asked in the
+  role's own chat; the watcher may audit the peer rollout for the actual user input.
 
 ## Stop conditions (in addition to SKILL.md)
 
-- The user cannot do the first paste into the Codex chat within 15 minutes: report and wait.
-- Both outbox and rollout unchanged for 30 minutes: report observed facts to the user and stop.
-- The implementer shows signs of working around sandbox constraints (writing into the main checkout,
-  bypassing approvals): report to the user immediately and write a stop instruction to the inbox.
+- The user cannot perform the first paste into the implementer chat within 15 minutes: report and wait.
+- A role has timed out for about 30 minutes: identify that role in its own chat as above and stop.
+- The implementer rollout cannot be uniquely identified after excluding the watcher rollout: stop.
+- The implementer works around sandbox constraints, writes code in the main checkout, or bypasses
+  approval: report immediately and send a sequenced stop instruction.
