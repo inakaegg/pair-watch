@@ -1,5 +1,7 @@
 # pair-watch
 
+🇯🇵 日本語: [README.ja.md](README.ja.md)
+
 Cross-vendor pair programming for coding agents: an **implementer** plus a **read-only watcher**
 across two chat sessions, with session-log auditing. Started from one side with a single command.
 
