@@ -7,7 +7,7 @@ across two chat sessions, with session-log auditing. Started from one side with 
 
 ```mermaid
 flowchart LR
-    U[User] -- "/pair-watch task" --> W[Watcher chat<br/>Claude, read-only]
+    U[User] -- "/pair-watch task<br/>(in either chat)" --> W[Watcher chat<br/>Claude, read-only]
     W <-- "SendMessage (Claude peer)" --> I[Implementer chat<br/>Claude or Codex]
     W <-. "inbox/outbox files (Codex peer)" .-> I
     W -. "audits session log<br/>(jsonl / rollout)" .-> I
@@ -18,7 +18,8 @@ flowchart LR
 You open two chats and type `/pair-watch <one-line task>` in **only one** of them. The invoked
 side figures out its role, discovers the peer session, delivers the peer a role brief, and the two
 run a supervised loop: the implementer changes code; the watcher verifies reports against the real
-artifacts, coordinates independent review gates, and never edits code. Decisions that belong to
+artifacts, coordinates independent review gates, and never edits your source (it does write the
+coordination files described below). Decisions that belong to
 the human are pushed back to the human.
 
 Two transports, selected automatically:
@@ -54,18 +55,18 @@ Claude Code already ships several ways to run more than one agent, and Codex has
 - **The watcher verifies instead of summarising.** Reports are checked against read-only git, grep, and test logs, and against the peer's own session transcript when a claim matters — for example "the user approved this". Subagents and teammates report back into the same coordinator that steers them.
 - **The human stays in the loop.** Both seats are ordinary chats you can talk to at any point, and anything that needs a decision goes back to you instead of being settled between the agents.
 - **Cross-vendor, one way.** The watcher is always Claude; the implementer is a Claude chat or a Codex CLI chat. A Codex implementer works through the inbox/outbox files with inbox-watch, so you do not type "check the inbox" every time. The reverse (Codex as watcher) is deliberately unsupported; the design note explains why.
-- **Process included.** A task contract, a review gate before any commit (an independent reviewer must return `VERDICT: LGTM`), and commit conditions are part of the protocol. Where the project's own `AGENTS.md` defines such rules, they take precedence.
+- **Process included.** A task contract, a review gate before any commit (an independent reviewer must return `VERDICT: LGTM`), and commit conditions are part of the protocol. The reviewer is a fresh process of the other lineage where possible — a Codex reviewer for a Claude implementer, a separate Claude process for a Codex implementer or when Codex is not installed. Where the project's own `AGENTS.md` defines such rules, they take precedence.
 - **Nothing to enable.** One command, no environment flag, no orchestration script. It is built on Claude Code's official cross-session messaging; Claude peers are push-driven, and a Codex implementer waits on the inbox at zero tokens.
 
 ### Before you use it
 
-- **Cost.** Two full sessions plus a reviewer process at each gate — more than a single session, less than a team.
+- **Cost.** Two full sessions, plus one reviewer process at each gate.
 - **The protocol is prompts, not code.** Roles, stop conditions, and the `VERDICT` discipline are instructions the models follow; nothing enforces them mechanically, and there are no automated tests of the protocol.
 - **A Codex implementer needs room for long-running commands.** inbox-watch holds a shell sleep loop; where every command needs approval, the pair falls back to manual nudges.
 
 Use it for a non-trivial change where you want a second pair of eyes that verifies rather than summarises, or for a Codex implementer under supervision. The built-in process makes it overkill for quick edits, and the two-seat design is the wrong tool for parallel bulk work.
 
-## Privacy: this skill reads the peer session's logs
+## What it reads and writes
 
 Auditing is the point of the watcher role, so be aware of what it touches:
 
@@ -73,6 +74,8 @@ Auditing is the point of the watcher role, so be aware of what it touches:
   (`~/.claude/projects/<slug>/<id>.jsonl`) and Codex rollouts
   (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`) — to verify start declarations, check claimed
   user approvals, and audit reports against what actually happened.
+- It writes coordination files into your repository: the task contract (`_ai/tasks/<slug>/TASK.md`) and, with a Codex peer, `pair-inbox.md` / `pair-outbox.md` in the same directory of the main checkout. Keep `_ai/` out of version control (add it to `.gitignore`).
+- For work that changes code, the implementer creates a task branch and a separate git worktree; nothing is done on the `main` checkout.
 - Everything stays on your machine. Nothing is sent anywhere by this skill.
 
 ## Install
@@ -90,13 +93,18 @@ Then, with two chats open in the same project, type in one of them:
 
 The peer chat may start empty. You do not have to keep writing to both sides.
 
+### Pairing with a Codex CLI chat
+
+1. Start Codex CLI in the same repository, in another terminal (Codex is installed separately).
+2. In the Claude chat, type `/pair-watch <one-line task>`. The Claude side becomes the watcher.
+3. The first time only, the watcher asks you to paste one line into the Codex chat ("Read `<inbox path>` and follow it."). From then on the Codex implementer watches the inbox itself.
+
 ## Tested with
 
-- Claude Code 2.1.x (requires SendMessage / ListAgents / Monitor)
+- Claude Code 2.1.224 or later (cross-session messaging: SendMessage / ListAgents / Monitor)
 - Codex CLI 0.147.x (rollout layout `~/.codex/sessions/YYYY/MM/DD/`)
 
-Cross-session messaging is an official Claude Code feature (v2.1.224 or later). Log audit reads the
-session files both CLIs keep locally; see the Privacy section for the paths.
+Log audit reads the session files both CLIs keep locally; see "What it reads and writes" for the paths.
 
 ## When it breaks
 
