@@ -44,7 +44,9 @@ latest_complete_sequence() {
 
 polls=0
 while :; do
-  latest=$(latest_complete_sequence)
+  if ! latest=$(latest_complete_sequence 2>/dev/null); then
+    latest=$last_seen
+  fi
   if test "$latest" -gt "$last_seen"; then
     printf '%s\n' "$latest"
     exit 0

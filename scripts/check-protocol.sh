@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# This checker intentionally pins literal wording in the protocol documents.
+# When prose changes, update the document and its assertion together; do not weaken
+# or delete an assertion merely to make a documentation edit pass.
+
 cd "$(dirname "$0")/.."
 
 fail() {
@@ -11,13 +15,13 @@ fail() {
 require_literal() {
   local file=$1
   local text=$2
-  rg -Fq -- "$text" "$file" || fail "$file is missing: $text"
+  grep -Fq -- "$text" "$file" || fail "$file is missing: $text"
 }
 
 reject_literal() {
   local file=$1
   local text=$2
-  if rg -Fq -- "$text" "$file"; then
+  if grep -Fq -- "$text" "$file"; then
     fail "$file still contains: $text"
   fi
 }

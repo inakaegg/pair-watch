@@ -45,4 +45,23 @@ fi
 printf '%s\n' 'newest' 'PAIR_MSG_END seq=3' 'older' 'PAIR_MSG_END seq=2' > "$message_file"
 assert_output 3 "$watch_script" "$message_file" 1 0 0
 
-printf 'PASS: wait-for-message reply-before-watch, in-watch, incomplete, timeout, and burst cases\n'
+real_awk=$(command -v awk)
+awk_shim=$tmp_dir/awk
+awk_state=$tmp_dir/awk-state
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -eu' \
+  'if ! test -e "$PAIR_WATCH_TEST_AWK_STATE"; then' \
+  '  : > "$PAIR_WATCH_TEST_AWK_STATE"' \
+  '  exit 2' \
+  'fi' \
+  'exec "$PAIR_WATCH_TEST_REAL_AWK" "$@"' > "$awk_shim"
+chmod +x "$awk_shim"
+printf '%s\n' 'second' 'PAIR_MSG_END seq=2' > "$message_file"
+actual=$(PATH="$tmp_dir:$PATH" \
+  PAIR_WATCH_TEST_AWK_STATE="$awk_state" \
+  PAIR_WATCH_TEST_REAL_AWK="$real_awk" \
+  "$watch_script" "$message_file" 1 0 1)
+test "$actual" = 2
+
+printf 'PASS: wait-for-message reply-before-watch, in-watch, incomplete, timeout, burst, and transient read failure cases\n'
