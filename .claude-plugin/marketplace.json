@@ -8,7 +8,7 @@
     {
       "name": "pair-watch",
       "source": "./plugins/pair-watch",
-      "description": "Cross-vendor pair programming for coding agents: implementer + read-only watcher with session-log auditing. Claude peer via SendMessage; Codex peer via file inbox/outbox + rollout audit."
+      "description": "Two-seat pair programming for coding agents: implementer + read-only watcher with session-log auditing. Claude peer via SendMessage; Codex peer via sequenced files + rollout audit, including Codex + Codex."
     }
   ]
 }

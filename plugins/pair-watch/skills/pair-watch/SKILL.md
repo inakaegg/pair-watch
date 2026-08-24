@@ -4,12 +4,12 @@ description: >-
   Use to run two coding-agent chats in parallel (implementer + watcher). The user types
   "/pair-watch <task>" in one chat only; role detection, peer-session discovery, and delivering
   the peer its role brief are automatic. Japanese cues: 「並行体制で」「2チャットで分担」「pairで」.
-  The peer chat may start empty. The peer can be a Claude chat or a Codex CLI chat (Codex is
-  implementer-only; transport switches to file inbox/outbox + rollout audit). Not for solo work or
-  for in-chat subagent delegation.
+  The peer chat may start empty. The peer can be a Claude chat or a Codex CLI chat. A Codex peer
+  switches transport to file inbox/outbox + rollout audit; when explicitly started from Codex,
+  another Codex chat can be the implementer. Not for solo work or in-chat subagent delegation.
 metadata:
   language: en
-  tested-with: "Claude Code (SendMessage/ListAgents/Monitor), Codex CLI rollout layout ~/.codex/sessions/YYYY/MM/DD/"
+  tested-with: "Claude Code (SendMessage/ListAgents/Monitor), Codex CLI 0.147 file watch and rollout layout ~/.codex/sessions/YYYY/MM/DD/"
 ---
 
 # Pair-watch — a two-seat setup started from one side
@@ -20,7 +20,9 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
 
 - Peer is a Claude chat: SendMessage, receive-driven (push, token-cheap). No resident polling script.
 - Peer is a Codex CLI chat: Codex cannot join SendMessage/ListAgents, so coordination uses agreed
-  files (inbox/outbox) plus rollout audit. See `references/transport-codex.md` ("transport C").
+  files (inbox/outbox), completed-message sequences, and rollout audit. The watcher may be Claude,
+  or a Codex chat when the setup was explicitly started as Codex + Codex. See
+  `references/transport-codex.md` ("transport C").
 
 ## Language (read first)
 
@@ -36,24 +38,30 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
 |---|---|---|
 | `VERDICT: LGTM` / `VERDICT: CHANGES REQUESTED` | gate reviewer | gate result; a local commit is allowed only after `VERDICT: LGTM` |
 | `[AGENT-DECISION]` | implementer | marks a design decision that came from neither the user nor observed data (the Japanese kit's `[エージェント判断]` is the same tag; both forms are accepted) |
-| `WATCH_ENDED` | Codex implementer (outbox) | inbox-watch stopped after ~30 min without inbox updates; the next move needs a user nudge |
+| `PAIR_MSG_END seq=<N>` | transport C writer | completes one message; sequence is positive, strictly increasing per file |
+| `WATCH_ENDED role=implementer` | Codex implementer (outbox) | inbox file watch stopped after ~30 min; nudge the implementer chat |
+| `WATCH_ENDED role=watcher` | Codex watcher (own chat) | outbox file watch stopped after ~30 min; nudge the watcher chat |
 | `pair-inbox.md` / `pair-outbox.md` | watcher / implementer | transport C files under `_ai/tasks/<slug>/` in the main checkout |
-| `{TASK} {MY_ADDR} {MY_JSONL} {INBOX} {OUTBOX}` | brief sender | placeholders that must be replaced before sending |
+| `{TASK} {MY_ADDR} {MY_JSONL} {INBOX} {OUTBOX} {WATCH_SCRIPT}` | brief sender | placeholders that must be replaced before sending |
 
 ## Procedure
 
 1. **Fix task, role, and peer type** — The task and any role given in the argument take priority.
-   Without an explicit role, decide in this order: (a) if the peer is a Codex chat, you are the
-   watcher (**Codex can only be the implementer**; the watcher is always Claude). (b) otherwise
-   decide by your own model: deep-reasoning class → watcher; others → implementer. (c) if your model
-   could be read either way, ask the user in one line. The watcher never changes code (exceptions:
-   writing the transport C inbox, and creating worktree/branch on the implementer's behalf). If
-   this skill is invoked inside a Codex session, tell the user to wait for the inbox delivered by
-   the Claude watcher, and stop. If no task is present in the argument or the conversation, ask the
-   user and stop. Done when: you can state your role, the peer type, and the task in one line.
-2. **Locate your own session log** — Build `~/.claude/projects/<slug>/<session-id>.jsonl` from the
-   project slug and session id found in the scratchpad directory path, and confirm it exists. Include
-   this path in the first message to the peer (the peer uses it for verification and audit).
+   State the peer type when the peer is Codex (for example `/pair-watch <task> — peer: Codex CLI`);
+   otherwise assume a Claude peer. Without an explicit role, decide in this order: (a) if the peer
+   is Codex, you are the watcher; this includes a Codex + Codex setup explicitly started from a
+   Codex chat. (b) otherwise decide by your own model: deep-reasoning class → watcher; others →
+   implementer. (c) if your model could be read either way, ask the user in one line. A Codex
+   watcher is supported only with a Codex implementer; Codex watcher + Claude implementer remains
+   unsupported. The watcher never changes code (exceptions: its transport C inbox and creating a
+   worktree/branch on the implementer's behalf). If invoked inside Codex without an explicit Codex
+   peer, say `codex-invoked` and stop to preserve the Claude-watcher flow. If no task is present,
+   ask the user and stop. Done when: you can state your role, peer type, and task in one line.
+2. **Locate your own session log** — Claude: build and confirm
+   `~/.claude/projects/<slug>/<session-id>.jsonl`. Codex: find and confirm the current rollout under
+   `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`; record its thread id. Include the path in the
+   first peer message. A Codex watcher also uses its path to exclude itself when locating the
+   implementer's rollout.
 3. **Discover the peer and pin its address** — If the peer is Codex, replace **only the discovery,
    communication, and monitoring means** of steps 3–6 with transport C steps 3C–6C (the rules of
    step 5 — gates, reviewer selection, commit conditions, following your own brief — still apply).
@@ -73,7 +81,9 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
    (if your setup has its own review skill or process, it applies on top of that minimum).
    The gate 3 reviewer's first choice is **a different lineage from the
    implementer** (implementer Claude → Codex reviewer; implementer Codex → a fresh-context separate
-   Claude process; read-only tools only). A review that ended in tool failure or without a `VERDICT`
+   Claude process; read-only tools only). When Claude is unavailable, a Codex watcher may launch a
+   fresh-context Codex reviewer with read-only tools and only the review artifacts; disclose that
+   same-lineage fallback in the result. A review that ended in tool failure or without a `VERDICT`
    line does not count as a round. When idle while waiting for the peer, do not wait indefinitely on
    receive: monitor the peer's session log (Claude: jsonl; Codex: outbox and rollout) for a stall
    (no update for 15 minutes) with Monitor or equivalent, and on a stall send a status check (this
