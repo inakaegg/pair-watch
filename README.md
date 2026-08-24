@@ -57,7 +57,7 @@ Claude Code already ships several ways to run more than one agent, and Codex has
 - **The human stays in the loop.** Both seats are ordinary chats you can talk to at any point, and anything that needs a decision goes back to you instead of being settled between the agents.
 - **Cross-vendor or Codex-only.** Claude peers use cross-session messaging. Codex peers use the
   sequenced inbox/outbox transport. With Codex + Codex, both roles wait in opposite directions, so
-  ordinary handoffs need no repeated “check the file” prompt.
+  ordinary handoffs need no repeated "check the file" prompt.
 - **Process included.** A task contract, a review gate before any commit (an independent reviewer must return `VERDICT: LGTM`), and commit conditions are part of the protocol. The reviewer is a fresh process of the other lineage where possible. If Claude is unavailable for a Codex implementer, a fresh read-only Codex context is the disclosed same-lineage fallback. Where the project's own `AGENTS.md` defines such rules, they take precedence.
 - **Nothing resident to enable.** One command, no environment flag or daemon. Claude peers are
   push-driven; Codex peers use a bounded shell wait included with the skill.
@@ -115,7 +115,7 @@ The peer chat may start empty. You do not have to keep writing to both sides.
    watches inbox, and the watcher watches outbox between handoffs.
 
 If either bounded watch reaches its approximately 30-minute limit, pair-watch names the role to
-nudge: type “check the inbox” in the implementer chat or “check the outbox” in the watcher chat.
+nudge: type "check the inbox" in the implementer chat or "check the outbox" in the watcher chat.
 
 ## Tested with
 
