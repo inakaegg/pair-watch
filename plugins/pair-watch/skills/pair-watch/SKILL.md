@@ -101,6 +101,9 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
 
 - Keep sending to a session name or ref → Name resolution is unreliable. The `from` address of the
   identification reply is the only address.
+- Launch a background or in-chat subagent as the implementer seat → That is solo delegation, not a
+  pair-watch seat. Discover the user's interactive peer chat (step 3 / 3C); a fresh-context subagent
+  is allowed only as the read-only gate 3 reviewer fallback of step 5.
 - Keep trying ListAgents/SendMessage toward a Codex peer → That route does not exist. Switch to
   transport C's file transport.
 - Judge the peer failed because it produced no output → Unless there is an explicit error, process
