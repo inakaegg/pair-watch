@@ -2,7 +2,7 @@
 name: pair-watch
 description: >-
   Use to run two coding-agent chats in parallel (implementer + watcher). The user types
-  "/pair-watch <task>" in one chat only; role detection, peer-session discovery, and delivering
+  "/pair-watch:pair-watch <task>" in one chat only; role detection, peer-session discovery, and delivering
   the peer its role brief are automatic. Japanese cues: 「並行体制で」「2チャットで分担」「pairで」.
   The peer chat may start empty. The peer can be a Claude chat or a Codex CLI chat. A Codex peer
   switches transport to file inbox/outbox + rollout audit; when explicitly started from Codex,
@@ -14,7 +14,7 @@ metadata:
 
 # Pair-watch — a two-seat setup started from one side
 
-The user opens two chats and types `/pair-watch <one-line task>` in **only one** of them. The
+The user opens two chats and types `/pair-watch:pair-watch <one-line task>` in **only one** of them. The
 invoked side determines its role, discovers the peer, delivers the peer's role brief (from
 `assets/`), and starts the setup. The transport depends on the peer type:
 
@@ -47,7 +47,7 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
 ## Procedure
 
 1. **Fix task, role, and peer type** — The task and any role given in the argument take priority.
-   State the peer type when the peer is Codex (for example `/pair-watch <task> — peer: Codex CLI`);
+   State the peer type when the peer is Codex (for example `/pair-watch:pair-watch <task> — peer: Codex CLI`);
    otherwise assume a Claude peer. Without an explicit role, decide in this order: (a) if the peer
    is Codex, you are the watcher; this includes a Codex + Codex setup explicitly started from a
    Codex chat. (b) otherwise decide by your own model: deep-reasoning class → watcher; others →
@@ -58,17 +58,54 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
    peer, say `codex-invoked` and stop to preserve the Claude-watcher flow. If no task is present,
    ask the user and stop. Done when: you can state your role, peer type, and task in one line.
 2. **Locate your own session log** — Claude: build and confirm
-   `~/.claude/projects/<slug>/<session-id>.jsonl`. Codex: find and confirm the current rollout under
+   `~/.claude/projects/<slug>/$CLAUDE_CODE_SESSION_ID.jsonl` (each session carries its own id in
+   the `CLAUDE_CODE_SESSION_ID` environment variable). Codex: find and confirm the current rollout under
    `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`; record its thread id. Include the path in the
    first peer message. A Codex watcher also uses its path to exclude itself when locating the
    implementer's rollout.
 3. **Discover the peer and pin its address** — If the peer is Codex, replace **only the discovery,
    communication, and monitoring means** of steps 3–6 with transport C steps 3C–6C (the rules of
    step 5 — gates, reviewer selection, commit conditions, following your own brief — still apply).
-   If the peer is Claude: list peer sessions of the same project with ListAgents and send each
-   candidate an identification question ("are you the peer for this task?") via SendMessage. When an
-   affirmative reply arrives, copy its `from` attribute verbatim and use it as the only address from
-   then on. Done when: exactly one peer address is pinned.
+   If the peer is Claude: list peer sessions of the same project with ListAgents, then resolve the
+   address in this order. Never broadcast to every session (that interrupts unrelated sessions and
+   wastes their tokens), and never send retractions to a session that did not answer — the best
+   oracles for "which session is the peer" are the session logs on disk and the user who just
+   opened it, not questions fired at the other sessions.
+   (a) If an identification question for the same task arrives from a peer before or during your
+   own discovery (both chats were invoked), answer it, pin that sender's `from` address, and skip
+   the rest — one side discovering is enough. (b) Identify by reading session logs BEFORE
+   messaging anyone: list this project's session files (`~/.claude/projects/<slug>/*.jsonl`,
+   newest first by mtime, excluding your own) and read the recent user messages of the newest one
+   or two. The peer chat is the one whose log matches the setup — a standby line from the user
+   ("wait for pair instructions", the task name), or a near-empty session started right around
+   the invocation. When one file clearly matches, send the identification question to **that one
+   candidate only**: the ListAgents session whose started-time agrees with the file's recent
+   activity (if no row can be determined, fall to (c)). The question must state your own role (so
+   a same-role conflict surfaces immediately) and say that a non-peer should simply not reply.
+   Include the matched jsonl path — the path only, never quoted log content — and tell the peer
+   HOW to confirm it: compare against `~/.claude/projects/<slug>/$CLAUDE_CODE_SESSION_ID.jsonl`
+   built from its own environment (the peer has not run step 2 yet, so the question must carry
+   this method; jsonl filenames do not map to ListAgents names directly, and this confirmation
+   closes that gap).
+   (c) When candidates are listed but not settled — several equally plausible, a listed
+   candidate whose log does not match, or no reply after ~2 minutes — stop probing sessions and
+   ask the user in one line which listed session is the peer (show the shortlist); asking the
+   user pauses this step until they answer. Then send the same identification question — your
+   role stated, as in (b) — to the session they name. At most two sessions total may be
+   questioned in one discovery (a cap that also spans any (b) re-runs triggered by (d)), and the
+   second slot is reserved for the session the user names — never for a next-best candidate
+   picked on your own. When an affirmative reply arrives, copy its `from` attribute verbatim and
+   use it as the only address from then on. When no candidate is listed at all, go to (d).
+   (d) No candidate at all usually means the user has not opened the peer chat yet. Ask them in
+   one line ("did you start the peer chat? open it and I'll find it"), and while waiting watch
+   `~/.claude/projects/<slug>/` for a new session file or a fresh update to one other than your
+   own — a bounded watch (Monitor or an equivalent loop) for up to 3 minutes from that question
+   (the pair is expected to start working right away; if the chat is not up within a few
+   minutes, waiting longer will not find it), reading nothing outside this project's session
+   directory. When a new or freshly
+   updated session appears, identify it via (b); if the user's answer names a session instead,
+   that wins. If the watch expires with nothing found, fall to the first stop condition. Done
+   when: exactly one peer address is pinned.
 4. **Deliver the role brief** — If you are the watcher, read the implementer brief
    (`assets/impl-brief.md` for a Claude peer, `assets/impl-brief-codex.md` for a
    Codex peer); if you are the implementer, read `assets/watch-brief.md`. Fill the
@@ -119,8 +156,10 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
 
 ## Stop conditions
 
-- No peer candidate in ListAgents, or no affirmative reply to the identification question within
-  15 minutes: report to the user and wait for instructions (the peer chat may not be started).
+- No plausible peer found (no candidate in ListAgents and no matching session log, after step
+  3d's watch expired), no affirmative reply to the identification question within 15 minutes, or
+  no answer within 15 minutes after asking the user to name the peer (step 3c): report to the
+  user and wait for instructions (the peer chat may not be started).
 - Peer unresponsive for 30+ minutes while working: report your observed facts to the user and stop.
 - Conflict in role, spec, or permitted scope: do not decide provisionally; ask in your own chat and stop.
 - Codex-specific stop conditions: follow transport C.

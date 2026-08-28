@@ -8,7 +8,7 @@ Claude + Codex, and Codex + Codex. Started from one side with a single command.
 
 ```mermaid
 flowchart LR
-    U[User] -- "/pair-watch task<br/>(in either chat)" --> W[Watcher chat<br/>Claude or Codex, read-only]
+    U[User] -- "/pair-watch:pair-watch task<br/>(in either chat)" --> W[Watcher chat<br/>Claude or Codex, read-only]
     W <-- "SendMessage (Claude peer)" --> I[Implementer chat<br/>Claude or Codex]
     W <-. "inbox/outbox files (Codex peer)" .-> I
     W -. "audits session log<br/>(jsonl / rollout)" .-> I
@@ -16,7 +16,7 @@ flowchart LR
 
 ## What it does
 
-You open two chats and type `/pair-watch <one-line task>` in **only one** of them. The invoked
+You open two chats and type `/pair-watch:pair-watch <one-line task>` in **only one** of them. The invoked
 side figures out its role, discovers the peer session, delivers the peer a role brief, and the two
 run a supervised loop: the implementer changes code; the watcher verifies reports against the real
 artifacts, coordinates independent review gates, and never edits your source (it does write the
@@ -81,6 +81,9 @@ Auditing is the point of the watcher role, so be aware of what it touches:
   (`~/.claude/projects/<slug>/<id>.jsonl`) and Codex rollouts
   (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`) — to verify start declarations, check claimed
   user approvals, and audit reports against what actually happened.
+- During discovery, the invoked side (either role) may also read the recent user messages of up
+  to two of this project's newest session logs to identify the peer before messaging anyone.
+  Only the file path — never log content — is quoted to the candidate.
 - The pair writes coordination files into your repository: the task contract (`_ai/tasks/<slug>/TASK.md`) and, with a Codex peer, `pair-inbox.md` / `pair-outbox.md` in that same `_ai/tasks/<slug>/` directory of the main checkout. Keep `_ai/` out of version control (add it to `.gitignore`).
 - For work that changes code, a task branch and a separate git worktree are created — normally by the implementer, or by the watcher on its behalf when a Codex sandbox cannot write to `.git`. Nothing is done on the `main` checkout.
 - Everything stays on your machine. Nothing is sent anywhere by this skill.
@@ -95,7 +98,7 @@ Auditing is the point of the watcher role, so be aware of what it touches:
 Then, with two chats open in the same project, type in one of them:
 
 ```text
-/pair-watch <one-line task>
+/pair-watch:pair-watch <one-line task>
 ```
 
 The peer chat may start empty. You do not have to keep writing to both sides.
@@ -103,14 +106,14 @@ The peer chat may start empty. You do not have to keep writing to both sides.
 ### Claude watcher + Codex implementer
 
 1. Start Codex CLI in the same repository, in another terminal (Codex is installed separately).
-2. In the Claude chat, type `/pair-watch <one-line task> — peer: Codex CLI`. Saying that the peer is Codex is what makes the Claude side the watcher; without it, Claude looks for a Claude peer and waits.
+2. In the Claude chat, type `/pair-watch:pair-watch <one-line task> — peer: Codex CLI`. Saying that the peer is Codex is what makes the Claude side the watcher; without it, Claude looks for a Claude peer and waits.
 3. The first time only, the watcher asks you to paste one line into the Codex chat ("Read `<inbox path>` and follow it."). From then on the Codex implementer watches the inbox itself.
 
 ### Codex + Codex
 
 1. Start two Codex CLI chats in the same repository.
 2. In the chat that should be the read-only watcher, type
-   `/pair-watch <one-line task> — peer: Codex CLI`.
+   `/pair-watch:pair-watch <one-line task> — peer: Codex CLI`.
 3. The watcher asks you to paste one line into the implementer chat. Paste it once. The implementer
    watches inbox, and the watcher watches outbox between handoffs.
 
@@ -138,6 +141,14 @@ Typical symptoms and what they mean:
   approval. Type "check the outbox" in the watcher chat.
 - *Audit steps fail to find session files* — a CLI update moved them. File an issue; until then
   the setup still works, minus log audit.
+- *Invoking `/pair-watch` keeps printing "Use the Skill tool to invoke…" and the skill never
+  starts* — your installed copy is version 0.2.0, whose command stub shadowed the same-named
+  skill (0.3.0 removed the stub, so the launch command is the full `/pair-watch:pair-watch`).
+  Update the plugin: `claude plugin marketplace update <marketplace> && claude plugin
+  update pair-watch@<marketplace>`, then start a new session.
+- *A session-start note says the installed copy is behind the marketplace source* — the bundled
+  version check found drift between the installed cache and the marketplace. Accept the suggested
+  update commands, or ignore the note; the installed version keeps working as-is.
 
 Stop conditions are listed in `SKILL.md`; the skill prefers stopping and asking over guessing.
 
