@@ -1,7 +1,7 @@
 {
   "name": "pair-watch",
   "description": "Two-seat coding-agent setup started from one chat: implementer + read-only watcher with session-log auditing. Supports Claude, Claude + Codex, and Codex + Codex.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "author": {
     "name": "inakaegg"
   }

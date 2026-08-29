@@ -15,8 +15,8 @@ metadata:
 # Pair-watch — a two-seat setup started from one side
 
 The user opens two chats and types `/pair-watch:pair-watch <one-line task>` in **only one** of them. The
-invoked side determines its role, discovers the peer, delivers the peer's role brief (from
-`assets/`), and starts the setup. The transport depends on the peer type:
+invoked side — unless the invocation is a standby order (step 1) — determines its role, discovers
+the peer, delivers the peer's role brief (from `assets/`), and starts the setup. The transport depends on the peer type:
 
 - Peer is a Claude chat: SendMessage, receive-driven (push, token-cheap). No resident polling script.
 - Peer is a Codex CLI chat: Codex cannot join SendMessage/ListAgents, so coordination uses agreed
@@ -55,8 +55,18 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
    watcher is supported only with a Codex implementer; Codex watcher + Claude implementer remains
    unsupported. The watcher never changes code (exceptions: its transport C inbox and creating a
    worktree/branch on the implementer's behalf). If invoked inside Codex without an explicit Codex
-   peer, say `codex-invoked` and stop to preserve the Claude-watcher flow. If no task is present,
-   ask the user and stop. Done when: you can state your role, peer type, and task in one line.
+   peer, say `codex-invoked` and stop to preserve the Claude-watcher flow. If no task is present
+   and this is not a standby invocation, ask the user and stop.
+   **Standby invocations do not discover.** If the user's input is a standby order — "wait for
+   instructions", "指示待て", "you are the implementer, wait for the pair" — you are the passive
+   seat regardless of model class, and a task name in the same line does not cancel the standby —
+   it only names the coming work. Run step 2 (locate your own log), state in your own chat that
+   you are waiting, and stop there. Do not run step 3's discovery and do not message any session
+   — the active side finds you: the user's standby order recorded in your session log is exactly
+   what its log scan (step 3b) looks for. From then on follow (a) of step 3: answer the
+   identification question when it arrives, then continue with your role's part of step 4
+   (normally: receive the brief and reply with the start declaration). Done when: you can state your role, peer type, and task in one line
+   (for a standby seat, "waiting to be contacted" is the valid task state).
 2. **Locate your own session log** — Claude: build and confirm
    `~/.claude/projects/<slug>/$CLAUDE_CODE_SESSION_ID.jsonl` (each session carries its own id in
    the `CLAUDE_CODE_SESSION_ID` environment variable). Codex: find and confirm the current rollout under
@@ -138,6 +148,9 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
 
 - Keep sending to a session name or ref → Name resolution is unreliable. The `from` address of the
   identification reply is the only address.
+- Invoked with a standby order ("wait for instructions") and start scanning for the peer → Only
+  the active side discovers. Locate your own log (step 2), say you are waiting, and stop; you
+  will be contacted (step 1, standby invocations).
 - Launch a background or in-chat subagent as the implementer seat → That is solo delegation, not a
   pair-watch seat. Discover the user's interactive peer chat (step 3 / 3C); a fresh-context subagent
   is allowed only as the read-only implementation-review (gate 3) reviewer fallback of step 5.

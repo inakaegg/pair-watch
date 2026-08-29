@@ -17,7 +17,8 @@ flowchart LR
 ## What it does
 
 You open two chats and type `/pair-watch:pair-watch <one-line task>` in **only one** of them. The invoked
-side figures out its role, discovers the peer session, delivers the peer a role brief, and the two
+side — unless it was only told to stand by and wait — figures out its role, discovers the peer
+session, delivers the peer a role brief, and the two
 run a supervised loop: the implementer changes code; the watcher verifies reports against the real
 artifacts, coordinates independent review gates, and never edits your source (it does write the
 coordination files described below). Decisions that belong to

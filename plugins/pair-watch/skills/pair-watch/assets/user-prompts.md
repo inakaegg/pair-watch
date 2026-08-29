@@ -8,5 +8,6 @@ Strings the skill says to the user. Keep the meaning stable when editing; the pr
 - codex-first-paste: "Please paste into the Codex chat: \"Read {INBOX} and follow it.\""
 - codex-nudge: "The Codex implementer's watch has ended. Please type in the Codex chat: \"check the inbox\"."
 - codex-watcher-nudge: "The Codex watcher's watch has ended. Please type in the watcher chat: \"check the outbox\"."
+- standby-wait: "Standby noted. This chat will not search for the peer; the active chat will contact it. Waiting."
 - no-peer: "No peer session found (or no reply within 15 minutes). Is the other chat started? Waiting for your instruction."
 - peer-silent: "The peer has been unresponsive for over 30 minutes. Observed facts: {FACTS}. Stopping here."
