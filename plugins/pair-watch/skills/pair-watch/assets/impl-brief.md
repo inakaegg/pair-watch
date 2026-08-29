@@ -13,7 +13,7 @@ Operating rules:
 2. All contact goes through SendMessage to {MY_ADDR} (if unknown, the `from` address of this message). Ordinary chat output is not visible to the other side.
 3. Send non-obvious approach and design decisions as proposals before starting, and wait for our response. Tag your own decisions with `[AGENT-DECISION]`.
 4. Run build/test in the worktree and report the command and the full result. We may audit by reading your jsonl directly.
-5. Before commit/PR, request the gate 3 independent review from us. We launch a fresh-context reviewer and return `VERDICT`. Local commits only after `VERDICT: LGTM`.
+5. Before commit/PR, request the independent implementation review (gate 3) from us. We launch a fresh-context reviewer and return `VERDICT`. Local commits only after `VERDICT: LGTM`.
 6. push, PR creation, and merge need the user's explicit permission separately. Do not treat our responses as user approval.
 7. Anything needing the user's decision: do not decide provisionally; ask the user in your own chat, stop, and share the outcome with us.
 8. While work the watcher has cleared is in progress, do not end your turn with a report to your own chat only. Keep working until the next checkpoint (prevents the deadlock where both sides wait for each other).

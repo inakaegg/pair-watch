@@ -116,7 +116,7 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
    with your role's name); with a Codex peer, transport C takes precedence. Branch/worktree and
    local-commit conditions: see "Shared rules" below. Gates: see "Shared rules" below
    (if your setup has its own review skill or process, it applies on top of that minimum).
-   The gate 3 reviewer's first choice is **a different lineage from the
+   The implementation-review (gate 3) reviewer's first choice is **a different lineage from the
    implementer** (implementer Claude → Codex reviewer; implementer Codex → a fresh-context separate
    Claude process; read-only tools only). When Claude is unavailable, a Codex watcher may launch a
    fresh-context Codex reviewer with read-only tools and only the review artifacts; disclose that
@@ -140,7 +140,7 @@ invoked side determines its role, discovers the peer, delivers the peer's role b
   identification reply is the only address.
 - Launch a background or in-chat subagent as the implementer seat → That is solo delegation, not a
   pair-watch seat. Discover the user's interactive peer chat (step 3 / 3C); a fresh-context subagent
-  is allowed only as the read-only gate 3 reviewer fallback of step 5.
+  is allowed only as the read-only implementation-review (gate 3) reviewer fallback of step 5.
 - Keep trying ListAgents/SendMessage toward a Codex peer → That route does not exist. Switch to
   transport C's file transport.
 - Judge the peer failed because it produced no output → Unless there is an explicit error, process
@@ -172,8 +172,9 @@ If the project's AGENTS.md defines contract, gate, or Git rules, those take prec
   verification, and stop conditions to `_ai/tasks/<slug>/TASK.md` before implementing. Tag design
   decisions that come from neither user instruction nor observed data with `[AGENT-DECISION]`.
 - **Gates (§7)**: heavy-risk work (public API, persistence, concurrency/async state, auth/security,
-  billing, migration, deploy, broad architecture) passes gate 1 (spec) → gate 2 (plan) → gate 3
-  (implementation). Ordinary work passes gate 3 only. Each gate needs `VERDICT: LGTM` from a
+  billing, migration, deploy, broad architecture) passes the spec review (gate 1) → the
+  implementation-plan review (gate 2) → the implementation review (gate 3). Ordinary work passes
+  the implementation review only. Each gate needs `VERDICT: LGTM` from a
   fresh-context reviewer who did not produce the artifact; in a two-agent setup the side that did
   not produce the artifact launches and runs the review, and the same gate is never launched from
   both sides. A launched reviewer is not judged failed on silence alone; wait at least 30 minutes
