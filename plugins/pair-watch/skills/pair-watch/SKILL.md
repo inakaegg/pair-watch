@@ -144,6 +144,32 @@ the peer, delivers the peer's role brief (from `assets/`), and starts the setup.
    report in their own chat and dissolve the setup (Codex peer: transport C step 6C). push, PR, and
    merge always require the user's explicit permission.
 
+## Multiple implementer seats (one watcher, N implementers)
+
+The two-seat flow extends to one watcher coordinating several implementer seats when the user
+explicitly provides them ("I opened two empty sessions", "use several implementers"). This is a
+supported arrangement, not an improvisation, with these adjustments:
+
+- **One watcher only.** The watcher stays single and never implements. Every implementer seat is a
+  user-opened interactive session (not a subagent — see Wrong shortcut below); each gets its own
+  identification question and its own role brief, labeled (seat A, B, C…).
+- **Disjoint scope per seat.** The watcher partitions work so seats never share a branch, worktree,
+  or source file. Each brief states the seat's own scope AND the other seats' scopes with the
+  files/branches to avoid. Shared files (a ROADMAP, a settings registry) require a one-line
+  check-in with the watcher before any seat edits them.
+- **Gates run per seat, serialized by the watcher.** Each seat's work passes the same gates as in
+  the two-seat flow; the watcher launches every reviewer, so review throughput is the bottleneck —
+  keep seats to what the watcher can audit (3–4 is a practical ceiling).
+- **Stall handling scales.** The watcher monitors every seat's session log; nudges are per seat.
+  A cross-seat finding (a flake one seat hits in another seat's area) is routed through the
+  watcher, never seat-to-seat.
+- **Trade-offs to tell the user up front.** Human confirmation cannot keep up with N seats in real
+  time: decisions that need the user pile up, so the watcher keeps a single pending list (pushes,
+  branch deletions, diff discards, test-expectation changes) and presents it at an agreed
+  checkpoint instead of interrupting per item. Watcher context also grows with every seat — long
+  runs should compact or checkpoint. The independence guarantee is per pair (watcher ↔ seat);
+  seats are not independent of each other's mistakes when their scopes touch.
+
 ## Wrong shortcut → correct action
 
 - Keep sending to a session name or ref → Name resolution is unreliable. The `from` address of the
