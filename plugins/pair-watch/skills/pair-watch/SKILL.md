@@ -207,8 +207,22 @@ supported arrangement, not an improvisation, with these adjustments:
     screen; anything that needs a decision goes via SendMessage to the watcher, never into your
     own chat". The watcher answers from the task contract or puts the item on the pending list in
     its own (visible) chat — the user keeps watching one chat, regardless of seat count.
-  - **Detect stuck seats** with SendMessage's `notify_when_idle` and, on an unexpected idle, read
-    the seat's session jsonl to see whether it is waiting on a question.
+  - **Monitor event-driven, not by polling.** Attach `notify_when_idle` to every message sent to
+    a seat — it is a one-shot subscription, consumed by the next idle, so it must be re-attached
+    each time; the flag itself costs nothing. The watcher then acts only on signals: the startup
+    handshake (seat must appear in ListAgents and answer an identification message within a
+    deadline — if not, look at its screen: `tmux capture-pane` for tmux seats, the pty output
+    file for script seats; this is how a trust dialog blocking startup was caught), incoming
+    replies, and idle notices. As a safety net while a task is assigned, a low-frequency
+    heartbeat (stat the seat's session jsonl mtime every 15–30 min) catches silent stalls cheaply.
+  - **A seat stuck on an on-screen chooser (AskUserQuestion, a dialog) cannot be messaged out of
+    it** — queued messages are only read at the seat's next tool round, and a seat waiting for
+    key input never reaches one. Recovery differs by route: a tmux seat accepts injected keys
+    (`tmux send-keys` — Esc to dismiss, arrows+Enter to choose; mechanism untested live but this
+    is the lever), a script seat accepts no outside input, so the recovery is kill +
+    `claude --resume <session-id>` in a fresh pty. This asymmetry is why tmux is the preferred
+    route when available. A seat that instead *asks in text* and goes idle is the easy case:
+    the idle notice fires and a SendMessage answer resumes it.
   - Spawned seats run with `--dangerously-skip-permissions`, so spawning is per-run user opt-in,
     and cleanup is fully scriptable: `tmux kill-session` / kill the seat's `claude` PID.
 - **Seat cleanup depends on where the sessions run.** Sessions are ordinary processes: in a
