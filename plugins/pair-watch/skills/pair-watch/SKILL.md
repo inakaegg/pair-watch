@@ -184,6 +184,33 @@ supported arrangement, not an improvisation, with these adjustments:
   tell the user when a seat is worth compacting (or replacing with a fresh session) between tasks.
   The independence guarantee is per pair (watcher ↔ seat); seats are not independent of each
   other's mistakes when their scopes touch.
+- **Watcher-spawned seats (verified on macOS).** Seats do not have to be user-opened: with the
+  user's explicit go-ahead for that run, the watcher can launch a seat itself as a real CLI
+  session, choosing model and reasoning effort freely (`claude --model ... --effort ...`) — this
+  sidesteps the subagent limitation where effort is inherited from the parent and cannot be
+  raised. A pty is required; two verified launch routes:
+  - tmux: `tmux new-session -d -s <seat> -c <trusted-project-dir> 'claude --model ... --effort ... --dangerously-skip-permissions "<brief>"'`
+  - no tmux (macOS/BSD): `script -q /dev/null claude ... "<brief>" < /dev/null` as a background
+    process (Linux syntax: `script -qc "claude ..." /dev/null`).
+  Rules learned the hard way, each observed in live runs:
+  - **Scrub the inherited env** before launching: unset `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`,
+    `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN`,
+    `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_ENTRYPOINT` and the other `CLAUDE*` vars the watcher's
+    own harness set. With them inherited, the seat registers as a child/remote session and its
+    messaging misbehaves.
+  - **Never pass `--disallowedTools AskUserQuestion`**: observed to remove SendMessage from the
+    seat as well, leaving it unable to reply at all. Question discipline comes from the brief,
+    not from tool removal.
+  - **Launch in a trusted project directory**: in an untrusted cwd the seat stalls invisibly at
+    the workspace-trust dialog before the prompt is even read.
+  - **The brief must route questions to the watcher**: tell the seat "no human watches this
+    screen; anything that needs a decision goes via SendMessage to the watcher, never into your
+    own chat". The watcher answers from the task contract or puts the item on the pending list in
+    its own (visible) chat — the user keeps watching one chat, regardless of seat count.
+  - **Detect stuck seats** with SendMessage's `notify_when_idle` and, on an unexpected idle, read
+    the seat's session jsonl to see whether it is waiting on a question.
+  - Spawned seats run with `--dangerously-skip-permissions`, so spawning is per-run user opt-in,
+    and cleanup is fully scriptable: `tmux kill-session` / kill the seat's `claude` PID.
 - **Seat cleanup depends on where the sessions run.** Sessions are ordinary processes: in a
   terminal a finished seat can be killed, and its tab closed too, from the watcher's shell.
   Verified flow on macOS Terminal.app: SIGTERM the seat's `claude` process, then SIGHUP its parent
@@ -214,7 +241,9 @@ supported arrangement, not an improvisation, with these adjustments:
   reasoning-effort setting and cannot raise it, so a watcher running at low effort would produce
   low-effort implementer subagents. When more implementer capacity is needed, ask the user to open
   additional interactive sessions (each carries its own model/effort settings and survives the
-  watcher's session) instead of spawning subagents.
+  watcher's session) instead of spawning subagents — or, with the user's explicit go-ahead, launch
+  a real CLI seat yourself ("Watcher-spawned seats" above), which also carries its own
+  model/effort settings.
 - Keep trying ListAgents/SendMessage toward a Codex peer → That route does not exist. Switch to
   transport C's file transport.
 - Judge the peer failed because it produced no output → Unless there is an explicit error, process
