@@ -179,6 +179,14 @@ supported arrangement, not an improvisation, with these adjustments:
   tell the user when a seat is worth compacting (or replacing with a fresh session) between tasks.
   The independence guarantee is per pair (watcher ↔ seat); seats are not independent of each
   other's mistakes when their scopes touch.
+- **Seat cleanup depends on where the sessions run.** Sessions are ordinary processes: in a
+  terminal (especially under tmux) a finished seat can be killed and its pane closed, and
+  `claude --resume <session-id>` brings it back with context if needed — so a use-once-and-retire
+  seat pool is fully manageable. In an IDE (VSCode), killing the process ends the session but the
+  tab stays; there is no API to close tabs from outside, so a large seat pool accumulates dead
+  tabs the user must close by hand. Prefer terminal/tmux for many-seat runs, or keep the pool
+  small in an IDE. The watcher never kills a seat on its own — seats hold uncommitted state, so
+  retiring one is the user's call.
 
 ## Wrong shortcut → correct action
 
