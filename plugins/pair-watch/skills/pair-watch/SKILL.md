@@ -160,6 +160,12 @@ supported arrangement, not an improvisation, with these adjustments:
 - **Gates run per seat, serialized by the watcher.** Each seat's work passes the same gates as in
   the two-seat flow; the watcher launches every reviewer, so review throughput is the bottleneck —
   keep seats to what the watcher can audit (3–4 is a practical ceiling).
+- **The watcher is less busy than it looks.** Observed in live runs: with 4 seats and several
+  reviews in flight, the watcher's own work stays light, because it only routes messages, launches
+  reviewers, and forwards verdicts — the heavy lifting (implementation, review) runs elsewhere and
+  in parallel. Seats were never kept waiting on the watcher; the real watcher-side constraint is
+  context growth, not throughput. Do not add a second watcher for load — it splits the audit trail
+  and the pending list for no gain.
 - **Stall handling scales.** The watcher monitors every seat's session log; nudges are per seat.
   A cross-seat finding (a flake one seat hits in another seat's area) is routed through the
   watcher, never seat-to-seat.
