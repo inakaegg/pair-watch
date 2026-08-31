@@ -19,6 +19,11 @@ invoked side — unless the invocation is a standby order (step 1) — determine
 the peer, delivers the peer's role brief (from `assets/`), and starts the setup. The transport depends on the peer type:
 
 - Peer is a Claude chat: SendMessage, receive-driven (push, token-cheap). No resident polling script.
+  Inbound cross-session messages are held for the receiving user's approval by default — even when
+  the receiver runs with `--dangerously-skip-permissions` — so replies stall silently until approved,
+  and a one-off approval does not carry over to the next message. Before relying on the message
+  loop, have the user set `"crossSessionInbound": "accept"` (in `~/.claude/settings.json`, or
+  `/config` → "Messages from your other sessions") on both sides.
 - Peer is a Codex CLI chat: Codex cannot join SendMessage/ListAgents, so coordination uses agreed
   files (inbox/outbox), completed-message sequences, and rollout audit. The watcher may be Claude,
   or a Codex chat when the setup was explicitly started as Codex + Codex. See
@@ -180,13 +185,20 @@ supported arrangement, not an improvisation, with these adjustments:
   The independence guarantee is per pair (watcher ↔ seat); seats are not independent of each
   other's mistakes when their scopes touch.
 - **Seat cleanup depends on where the sessions run.** Sessions are ordinary processes: in a
-  terminal (especially under tmux) a finished seat can be killed and its pane closed, and
-  `claude --resume <session-id>` brings it back with context if needed — so a use-once-and-retire
-  seat pool is fully manageable. In an IDE (VSCode), killing the process ends the session but the
-  tab stays; there is no API to close tabs from outside, so a large seat pool accumulates dead
-  tabs the user must close by hand. Prefer terminal/tmux for many-seat runs, or keep the pool
-  small in an IDE. The watcher never kills a seat on its own — seats hold uncommitted state, so
-  retiring one is the user's call.
+  terminal a finished seat can be killed, and its tab closed too, from the watcher's shell.
+  Verified flow on macOS Terminal.app: SIGTERM the seat's `claude` process, then SIGHUP its parent
+  shell — with the profile setting "close the tab when the shell exits" the tab closes by itself
+  (observed to work even with the "exited cleanly" variant, despite the signal death). This is
+  plain process signalling: no AppleScript, no automation-permission dialog. Driving the tab via
+  AppleScript + Cmd+W also works, but it needs a one-time automation grant and sends the keystroke
+  to the frontmost window (racy if the user is clicking around) — prefer the signal route. Under
+  tmux the portable equivalent is `tmux kill-session`. `claude --resume <session-id>` brings a
+  killed seat back with context if needed — so a use-once-and-retire seat pool is fully
+  manageable. In an IDE (VSCode), killing the process ends the session but the tab stays; there
+  is no API to close tabs from outside, so a large seat pool accumulates dead tabs the user must
+  close by hand. Prefer terminal/tmux for many-seat runs, or keep the pool small in an IDE. The
+  watcher never kills a seat on its own — seats hold uncommitted state, so retiring one (including
+  the tab-closing flow above) happens only on the user's explicit instruction.
 
 ## Wrong shortcut → correct action
 

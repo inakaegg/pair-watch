@@ -134,6 +134,11 @@ Typical symptoms and what they mean:
 
 - *No peer found / no reply to the identification question within 15 minutes* — the other chat is
   not started, or ListAgents/SendMessage changed. The skill reports and waits for you.
+- *A sent message or reply never reaches the other chat* — it is held on the receiving side,
+  waiting for that user's approval. Claude Code gates inbound cross-session messages by default,
+  even when the receiver runs with `--dangerously-skip-permissions`, and a one-off approval does
+  not carry over to the next message. Set `"crossSessionInbound": "accept"` in
+  `~/.claude/settings.json` on both sides (or `/config` → "Messages from your other sessions").
 - *The watcher is waiting for the first paste into the Codex chat* — on first start it asks you for one paste and waits up to 15 minutes; paste the line and it resumes.
 - *A Codex peer never reacts to the inbox* — the file watch may have ended (30-minute cap) or the
   environment requires approval per command, where the watch cannot run. Type "check the inbox"
