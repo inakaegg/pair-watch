@@ -63,6 +63,25 @@ Claude Code already ships several ways to run more than one agent, and Codex has
 - **Nothing resident to enable.** One command, no environment flag or daemon. Claude peers are
   push-driven; Codex peers use a bounded shell wait included with the skill.
 
+How the classic two-seat run and a multi-seat run divide your attention:
+
+```mermaid
+flowchart TB
+    subgraph classic["Classic run — two seats, you watch both chats"]
+        direction LR
+        U1([You]) --- W1["Watcher chat"]
+        U1 --- I1["Implementer chat"]
+        W1 <-.->|"messages · log audit"| I1
+    end
+    subgraph multi["Multi-seat run — you watch one chat"]
+        direction LR
+        U2([You]) --- W2["Watcher chat<br/>(questions land here<br/>as a pending list)"]
+        W2 <-->|"brief · report"| A["Seat A"]
+        W2 <-->|"brief · report"| B["Seat B"]
+        W2 <-->|"spawn · recover · retire"| C["Seat C<br/>(tmux / script pty)"]
+    end
+```
+
 ### Before you use it
 
 - **Cost.** Two full sessions, plus one reviewer process at each gate.
