@@ -1,13 +1,15 @@
 # ROADMAP
 
-実装の順序と進み具合。実装状況はこのファイルだけに書く。
+Implementation order and progress. Implementation status is recorded only in this file.
 
-## 作者の指示で未実装のもの
+## Instructed by the author, not yet implemented
 
-作者からの指示・要望のうち、まだ実装が終わっていないものを日付つきで置く。完了したら「現状」へ移して行を消す。
+Author instructions and requests not yet implemented, with dates. When done, move the entry to "Current state" and delete the row.
 
-- [2026-08-29] 多席運用の設計。監視役1＋実装役2の形は2026-08-29に実運用したが、席の組み合わせはそれだけではない（例: 計画役＋実装役＋レビュー役）。他のライブラリ・スキルにある座組（BMadのworkflow等）を調べ、どの組み合わせを本Skillが正式に支えるかを設計してから文書化する。**skillへの反映は設計が終わるまで行わない**。初回実運用の観察メモは `_ai/notes/2026-08-29-multi-seat-draft.md`（ファイル占有の分割・mergeの直列化・運用系の一元化・指示台帳、の4点） — **未着手**
+- [2026-08-29] Multi-seat arrangements beyond one watcher + N implementers (e.g. planner + implementer + reviewer). Survey seat combinations in other libraries and skills (BMad workflows etc.) and design which combinations this skill formally supports before documenting them. The observation notes from the first live run are in `_ai/notes/2026-08-29-multi-seat-draft.md` (file-ownership partitioning, serialized merges, centralized operations, an instruction ledger) — **not started**. Note: the basic one-watcher + N-implementers arrangement was documented ahead of this design on 2026-08-31 by explicit author instruction (see "Current state"); this entry now covers only the remaining combinations.
 
-## 現状
+## Current state
 
-- 2026-08-29: 待機指示での起動は探索せず待つ形にした（standby invocations）
+- 2026-08-31: The one-watcher + N-implementer-seats arrangement is documented in the skill ("Multiple implementer seats" section) and in both READMEs, including its trade-offs (user confirmation backlog, watcher context growth, review throughput ceiling, seat context that only the human can compact). Documented by author instruction during the second live run (1 watcher + up to 4 seats).
+- 2026-08-31: Recorded why implementer seats must be real sessions, not subagents (subagents inherit the launching session's reasoning effort).
+- 2026-08-29: Standby invocations wait without discovering (the active side finds them).

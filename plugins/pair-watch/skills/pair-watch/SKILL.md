@@ -167,8 +167,12 @@ supported arrangement, not an improvisation, with these adjustments:
   time: decisions that need the user pile up, so the watcher keeps a single pending list (pushes,
   branch deletions, diff discards, test-expectation changes) and presents it at an agreed
   checkpoint instead of interrupting per item. Watcher context also grows with every seat — long
-  runs should compact or checkpoint. The independence guarantee is per pair (watcher ↔ seat);
-  seats are not independent of each other's mistakes when their scopes touch.
+  runs should compact or checkpoint. Seat context is a budget the agents cannot manage: only the
+  human can compact an interactive session, so assigning a seat successive tasks fills its context
+  with the previous tasks' history. Prefer routing a new, unrelated task to the freshest seat, and
+  tell the user when a seat is worth compacting (or replacing with a fresh session) between tasks.
+  The independence guarantee is per pair (watcher ↔ seat); seats are not independent of each
+  other's mistakes when their scopes touch.
 
 ## Wrong shortcut → correct action
 
