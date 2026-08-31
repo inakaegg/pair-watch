@@ -72,7 +72,7 @@ Claude Code already ships several ways to run more than one agent, and Codex has
 - **A Codex seat needs room for long-running commands.** The file watch holds a shell sleep loop;
   where every command needs approval, that seat falls back to a manual nudge.
 
-Use it for a non-trivial change where you want a second pair of eyes that verifies rather than summarises, or for a Codex implementer under supervision. The built-in process makes it overkill for quick edits, and the two-seat design is the wrong tool for parallel bulk work.
+Use it for a non-trivial change where you want a second pair of eyes that verifies rather than summarises, or for a Codex implementer under supervision. The built-in process makes it overkill for quick edits. Parallel work is covered too: one watcher can drive several implementer seats (see "Multiple implementer seats" in the skill for the practical ceiling).
 
 ## What it reads and writes
 
