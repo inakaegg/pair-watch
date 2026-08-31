@@ -10,6 +10,7 @@ Author instructions and requests not yet implemented, with dates. When done, mov
 
 ## Current state
 
+- 2026-09-01: Watcher-spawned seats are documented in the skill (launch under tmux or script(1) with env scrubbing, question routing to the watcher, stall detection and kill + `--resume` recovery) together with seat cleanup by plain signals (SIGTERM the seat, SIGHUP its shell; verified on macOS Terminal.app) and the `crossSessionInbound: accept` requirement for unattended message delivery. Verified live and documented by author instruction.
 - 2026-08-31: The one-watcher + N-implementer-seats arrangement is documented in the skill ("Multiple implementer seats" section) and in both READMEs, including its trade-offs (user confirmation backlog, watcher context growth, review throughput ceiling, seat context that only the human can compact). Documented by author instruction during the second live run (1 watcher + up to 4 seats).
 - 2026-08-31: Recorded why implementer seats must be real sessions, not subagents (subagents inherit the launching session's reasoning effort).
 - 2026-08-29: Standby invocations wait without discovering (the active side finds them).

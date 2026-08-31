@@ -152,12 +152,14 @@ the peer, delivers the peer's role brief (from `assets/`), and starts the setup.
 ## Multiple implementer seats (one watcher, N implementers)
 
 The two-seat flow extends to one watcher coordinating several implementer seats when the user
-explicitly provides them ("I opened two empty sessions", "use several implementers"). This is a
-supported arrangement, not an improvisation, with these adjustments:
+explicitly provides them ("I opened two empty sessions", "use several implementers") or approves
+the watcher spawning them ("Watcher-spawned seats" below). This is a supported arrangement, not
+an improvisation, with these adjustments:
 
 - **One watcher only.** The watcher stays single and never implements. Every implementer seat is a
-  user-opened interactive session (not a subagent — see Wrong shortcut below); each gets its own
-  identification question and its own role brief, labeled (seat A, B, C…).
+  full interactive CLI session — user-opened, or watcher-spawned per "Watcher-spawned seats"
+  below; never a subagent (see Wrong shortcut below). Each gets its own identification question
+  and its own role brief, labeled (seat A, B, C…).
 - **Disjoint scope per seat.** The watcher partitions work so seats never share a branch, worktree,
   or source file. Each brief states the seat's own scope AND the other seats' scopes with the
   files/branches to avoid. Shared files (a ROADMAP, a settings registry) require a one-line
@@ -192,7 +194,7 @@ supported arrangement, not an improvisation, with these adjustments:
   - tmux: `tmux new-session -d -s <seat> -c <trusted-project-dir> 'claude --model ... --effort ... --dangerously-skip-permissions "<brief>"'`
   - no tmux (macOS/BSD): `script -q /dev/null claude ... "<brief>" < /dev/null` as a background
     process (Linux syntax: `script -qc "claude ..." /dev/null`).
-  Rules learned the hard way, each observed in live runs:
+  Rules learned the hard way (verified in live runs unless noted):
   - **Scrub the inherited env** before launching: unset `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`,
     `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN`,
     `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_ENTRYPOINT` and the other `CLAUDE*` vars the watcher's
@@ -203,6 +205,9 @@ supported arrangement, not an improvisation, with these adjustments:
     not from tool removal.
   - **Launch in a trusted project directory**: in an untrusted cwd the seat stalls invisibly at
     the workspace-trust dialog before the prompt is even read.
+  - **Confirm `crossSessionInbound: accept` is set before spawning**: a spawned seat has no human
+    to approve inbound messages, so without it the startup handshake goes silent — a symptom
+    indistinguishable from the trust-dialog stall. "Both sides" means every seat in an N-seat run.
   - **The brief must route questions to the watcher**: tell the seat "no human watches this
     screen; anything that needs a decision goes via SendMessage to the watcher, never into your
     own chat". The watcher answers from the task contract or puts the item on the pending list in
@@ -223,8 +228,8 @@ supported arrangement, not an improvisation, with these adjustments:
     `claude --resume <session-id>` in a fresh pty. This asymmetry is why tmux is the preferred
     route when available. A seat that instead *asks in text* and goes idle is the easy case:
     the idle notice fires and a SendMessage answer resumes it.
-  - Spawned seats run with `--dangerously-skip-permissions`, so spawning is per-run user opt-in,
-    and cleanup is fully scriptable: `tmux kill-session` / kill the seat's `claude` PID.
+  - Spawned seats run with `--dangerously-skip-permissions`, so spawning is per-run user opt-in.
+    Cleanup follows the seat-retirement rule in the "Seat cleanup" bullet below.
 - **Seat cleanup depends on where the sessions run.** Sessions are ordinary processes: in a
   terminal a finished seat can be killed, and its tab closed too, from the watcher's shell.
   Verified flow on macOS Terminal.app: SIGTERM the seat's `claude` process, then SIGHUP its parent
@@ -237,9 +242,12 @@ supported arrangement, not an improvisation, with these adjustments:
   killed seat back with context if needed — so a use-once-and-retire seat pool is fully
   manageable. In an IDE (VSCode), killing the process ends the session but the tab stays; there
   is no API to close tabs from outside, so a large seat pool accumulates dead tabs the user must
-  close by hand. Prefer terminal/tmux for many-seat runs, or keep the pool small in an IDE. The
-  watcher never kills a seat on its own — seats hold uncommitted state, so retiring one (including
-  the tab-closing flow above) happens only on the user's explicit instruction.
+  close by hand. Prefer terminal/tmux for many-seat runs, or keep the pool small in an IDE.
+  **Retiring a seat** (kill without return, including the tab-closing flow above) happens only on
+  the user's explicit instruction — seats hold uncommitted state. One exception for
+  watcher-spawned seats: **stall recovery** — kill + `claude --resume <session-id>` of a seat
+  stuck on an on-screen chooser preserves its context and is the watcher's call, reported to the
+  user afterwards.
 
 ## Wrong shortcut → correct action
 

@@ -53,7 +53,7 @@ Claude Code already ships several ways to run more than one agent, and Codex has
 
 ### What is different by design
 
-- **Fixed roles, starting from two seats.** One implementer, one read-only watcher. Two seats is the smallest arrangement in which one party can check the other without sharing its context. The same protocol extends to one watcher coordinating several user-opened implementer seats with disjoint scopes (see the skill's "Multiple implementer seats" section) — the watcher's review throughput and the user's confirmation backlog are the practical limits, so it does not fan out beyond a few seats.
+- **Fixed roles, starting from two seats.** One implementer, one read-only watcher. Two seats is the smallest arrangement in which one party can check the other without sharing its context. The same protocol extends to one watcher coordinating several implementer seats — opened by you, or launched by the watcher with your approval — with disjoint scopes (see the skill's "Multiple implementer seats" section) — the watcher's review throughput and the user's confirmation backlog are the practical limits, so it does not fan out beyond a few seats.
 - **The watcher verifies instead of summarising.** Reports are checked against read-only git, grep, and test logs, and against the peer's own session transcript when a claim matters — for example "the user approved this". Subagents and teammates report back into the same coordinator that steers them.
 - **The human stays in the loop.** Both seats are ordinary chats you can talk to at any point, and anything that needs a decision goes back to you instead of being settled between the agents.
 - **Cross-vendor or Codex-only.** Claude peers use cross-session messaging. Codex peers use the
