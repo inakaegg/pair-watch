@@ -154,6 +154,11 @@ the peer, delivers the peer's role brief (from `assets/`), and starts the setup.
 - Launch a background or in-chat subagent as the implementer seat → That is solo delegation, not a
   pair-watch seat. Discover the user's interactive peer chat (step 3 / 3C); a fresh-context subagent
   is allowed only as the read-only implementation-review (gate 3) reviewer fallback of step 5.
+  A practical reason on top of the structural one: a subagent inherits the launching session's
+  reasoning-effort setting and cannot raise it, so a watcher running at low effort would produce
+  low-effort implementer subagents. When more implementer capacity is needed, ask the user to open
+  additional interactive sessions (each carries its own model/effort settings and survives the
+  watcher's session) instead of spawning subagents.
 - Keep trying ListAgents/SendMessage toward a Codex peer → That route does not exist. Switch to
   transport C's file transport.
 - Judge the peer failed because it produced no output → Unless there is an explicit error, process
