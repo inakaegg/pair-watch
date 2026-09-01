@@ -109,6 +109,17 @@ The practical ceiling is three or four implementers. The bottleneck is not the s
 the review throughput the watcher can coordinate, and the decisions that queue up for you.
 Operational detail lives in the skill's "Multiple implementer seats" section.
 
+**Permissions for watcher-launched sessions.** A watcher running in the default (auto)
+permission mode is typically blocked from launching sessions until you allowlist the tmux
+commands (`tmux new-session` / `send-keys` / `capture-pane` / `kill-session` / `ls`) under
+`permissions.allow`. Know what you are granting before you add them: within their scope, these
+rules let sessions start arbitrary commands via `tmux new-session`, inject keystrokes, and read
+pane contents without prompting — a grant broader than pair-watch itself. Prefer the project's
+`.claude/settings.json` over the global `~/.claude/settings.json`, and remove the entries when
+you stop using launched sessions. The watcher explains the same trade-off before asking you to
+add the rules; launched sessions also run with `--dangerously-skip-permissions`, which is why
+launching is opt-in per run.
+
 ## Why another multi-agent mechanism?
 
 Claude Code already ships several ways to run more than one agent, and Codex has its own.

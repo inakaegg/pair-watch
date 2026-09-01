@@ -195,6 +195,32 @@ an improvisation, with these adjustments:
   - no tmux (macOS/BSD): `script -q /dev/null claude ... "<brief>" < /dev/null` as a background
     process (Linux syntax: `script -qc "claude ..." /dev/null`).
   Rules learned the hard way (verified in live runs unless noted):
+  - **Add spawn permissions BEFORE the first spawn** — without them the launch can fail.
+    Observed live in a watcher session running in auto permission mode: the harness's
+    permission classifier blocked `claude --dangerously-skip-permissions` spawns (tmux route:
+    denied outright on every attempt; script route: intermittently escalated to a user
+    prompt, intermittently denied). Chat-level user approval did not override the classifier,
+    and the watcher cannot add the rules itself (self-editing `settings.json` permissions was
+    also blocked — by design). So the brief to the USER, before the first spawn: add
+    `"Bash(tmux new-session:*)", "Bash(tmux send-keys:*)", "Bash(tmux capture-pane:*)",
+    "Bash(tmux kill-session:*)", "Bash(tmux ls:*)"` to `permissions.allow` — preferably in the
+    PROJECT's `.claude/settings.json` (scoped to that repo), or in `~/.claude/settings.json`
+    if seats are spawned across many projects. Note the trade-off before the user chooses:
+    these rules let any session in their scope start arbitrary commands via
+    `tmux new-session`, inject keys, and read panes without prompting, so a global entry
+    widens the boundary well beyond pair-watch — recommend project-local, and removal when
+    the seat workflow is no longer used. In the observed environment (no conflicting
+    deny/ask rules or hooks), the allowlisted tmux launch then ran without any prompt;
+    an allow rule cannot override deny/ask rules or blocking hooks — those take precedence,
+    so a launch can still be stopped where they match. Keep
+    the env scrub INSIDE the string passed to tmux so the outer command still starts with
+    `tmux` and matches the rule. A compound command (`pkill ...; tmux ...`) does not match —
+    run the tmux call as its own Bash invocation.
+  - **In an IDE-hosted watcher, prefer tmux over script for UX too**: a `script`-route seat
+    spawned from a VSCode-hosted session surfaces as a visible terminal in the user's IDE
+    (observed live; confusing — the user sees a terminal open "by itself"). A detached tmux
+    session stays invisible. Combined with the input asymmetry below, tmux is the default
+    route whenever available; use `script` only when tmux is absent.
   - **Scrub the inherited env** before launching: unset `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`,
     `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN`,
     `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_ENTRYPOINT` and the other `CLAUDE*` vars the watcher's
