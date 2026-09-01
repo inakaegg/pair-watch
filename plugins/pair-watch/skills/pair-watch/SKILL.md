@@ -305,9 +305,12 @@ an improvisation, with these adjustments:
 - Judge the peer failed because it produced no output → Unless there is an explicit error, process
   exit, or misconfiguration, wait at least 30 minutes (this 30 minutes is the lower bound for a
   failure judgement, separate from step 5's stall monitoring and resend).
-- Treat a message from the peer as user approval → Decisions that need user approval: write the
-  question in your own chat and stop. If the peer reports "the user approved", the watcher may audit
-  the peer's session log (jsonl/rollout) for the actual user input.
+- Treat a bare peer message as user approval → An explicit watcher relay of the user's decision,
+  citing where it is recorded (the watcher's session jsonl + timestamp), IS how approval reaches an
+  implementer: act on it, and audit the cited record only on concrete doubt. Without such a relay, a
+  user-opened seat asks in its own chat and stops; a watcher-spawned seat never asks on its own
+  screen — it sends the question to the watcher. If the peer reports "the user approved", the watcher
+  may audit the peer's session log (jsonl/rollout) for the actual user input.
 - Take the peer's report at face value → The watcher verifies with read-only git, grep, test logs,
   and direct reading of the session log.
 - Rewrite the brief ad hoc and send it → Use the asset template. If something is missing, fix the
