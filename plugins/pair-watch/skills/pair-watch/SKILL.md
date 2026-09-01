@@ -245,14 +245,15 @@ an improvisation, with these adjustments:
     screen; anything that needs a decision goes via SendMessage to the watcher, never into your
     own chat". The watcher answers from the task contract or puts the item on the pending list in
     its own (visible) chat — the user keeps watching one chat, regardless of seat count.
-  - **Monitor event-driven, not by polling.** Attach `notify_when_idle` to every message sent to
-    a seat — it is a one-shot subscription, consumed by the next idle, so it must be re-attached
-    each time; the flag itself costs nothing. The watcher then acts only on signals: the startup
+  - **Monitor event-driven, not by polling.** The watcher acts only on signals: the startup
     handshake (seat must appear in ListAgents and answer an identification message within a
     deadline — if not, look at its screen: `tmux capture-pane` for tmux seats, the pty output
-    file for script seats; this is how a trust dialog blocking startup was caught), incoming
-    replies, and idle notices. As a safety net while a task is assigned, a low-frequency
-    heartbeat (stat the seat's session jsonl mtime every 15–30 min) catches silent stalls cheaply.
+    file for script seats; this is how a trust dialog blocking startup was caught) and incoming
+    replies. A seat whose brief obliges it to report needs no idle subscription — observed in
+    live runs, `notify_when_idle` notices only duplicated the reports and added noise; when a
+    report is overdue, stat the seat's session jsonl mtime instead. Attach `notify_when_idle`
+    (a one-shot subscription, consumed by the next idle) only to a seat that has no reporting
+    duty on its current instruction.
   - **A seat stuck on an on-screen chooser (AskUserQuestion, a dialog) cannot be messaged out of
     it** — queued messages are only read at the seat's next tool round, and a seat waiting for
     key input never reaches one. Recovery differs by route: a tmux seat accepts injected keys
