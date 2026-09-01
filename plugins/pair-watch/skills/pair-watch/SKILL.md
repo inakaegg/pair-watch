@@ -223,8 +223,8 @@ an improvisation, with these adjustments:
   - **A seat stuck on an on-screen chooser (AskUserQuestion, a dialog) cannot be messaged out of
     it** — queued messages are only read at the seat's next tool round, and a seat waiting for
     key input never reaches one. Recovery differs by route: a tmux seat accepts injected keys
-    (`tmux send-keys` — Esc to dismiss, arrows+Enter to choose; mechanism untested live but this
-    is the lever), a script seat accepts no outside input, so the recovery is kill +
+    (`tmux send-keys` — Esc to dismiss, arrows+Enter to choose; verified live by clearing a
+    workspace-trust dialog with Down+Enter), a script seat accepts no outside input, so the recovery is kill +
     `claude --resume <session-id>` in a fresh pty. This asymmetry is why tmux is the preferred
     route when available. A seat that instead *asks in text* and goes idle is the easy case:
     the idle notice fires and a SendMessage answer resumes it.
