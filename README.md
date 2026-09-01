@@ -137,9 +137,12 @@ pair-watch takes the channel and adds the missing protocol:
 - **Asymmetric roles.** The watcher never edits your source. Not writing the diff is what makes
   it a credible checker: it has no stake in the change, and its context is not shaped by having
   produced it.
-- **A duty to verify.** The watcher checks reports against read-only git, grep, and test logs —
-  and against the peer session's transcript on disk. A claim like "the user approved this" is
-  confirmed in the log, not taken on faith.
+- **A duty to verify.** The watcher checks reports against the artifacts first: read-only git,
+  grep, rerunning the tests. The peer session's transcript on disk is read for claims no
+  artifact can prove — "the user approved this", "this decision came from the user" — which are
+  confirmed in the log, not taken on faith. This auditing watcher is a different role from the
+  review-gate reviewer, who is given a fresh context and never shown the implementer's
+  conversation.
 - **Automated seating.** One command determines roles, finds the peer, and delivers the briefs.
 - **One place for decisions.** Anything that needs a human lands in the watcher chat as a
   pending list, however many implementers are running.
@@ -168,9 +171,12 @@ As a summary:
 - **Minimum process defaults.** The skill inlines just enough process for the
   watcher to have a standard to verify against: a task contract, an independent review returning
   `VERDICT: LGTM` before any commit, and commit conditions. Where the project defines its own
-  rules, those take precedence and pair-watch only runs the sessions. It pairs well with the
-  author's [agent-kit](https://github.com/inakaegg/agent-kit), whose fuller contract and
-  three-stage review slot in as that replacement.
+  rules, those take precedence and pair-watch only runs the sessions. This replacement is not an
+  agent-kit-specific integration: both CLIs read the repository's `AGENTS.md` at startup, so any
+  repository that states its contract and review rules there gets the same effect. The
+  combination verified in practice is the author's
+  [agent-kit](https://github.com/inakaegg/agent-kit), whose fuller contract and three-stage
+  review slot in as that replacement.
 - **Nothing resident to enable.** One command, no environment flag or daemon. Claude peers are
   push-driven; Codex peers use a bounded shell wait included with the skill.
 
