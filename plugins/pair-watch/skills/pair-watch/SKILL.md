@@ -204,7 +204,14 @@ an improvisation, with these adjustments:
     seat as well, leaving it unable to reply at all. Question discipline comes from the brief,
     not from tool removal.
   - **Launch in a trusted project directory**: in an untrusted cwd the seat stalls invisibly at
-    the workspace-trust dialog before the prompt is even read.
+    the workspace-trust dialog before the prompt is even read. Trust is per directory and
+    persists in the CLI config once accepted — except for git linked worktrees, where an
+    acceptance was observed not to persist, so the dialog can return on the next spawn. For a
+    seat that must work in a worktree, the verified route is cwd = the trusted main checkout
+    plus `--add-dir <worktree>` (no dialog, and the seat can write in the added directory).
+    Beware: `--add-dir` takes multiple values, so a positional prompt placed after it is
+    swallowed as a path — put the prompt before the flag, or send instructions after startup.
+    As a last resort a dialog can be cleared from outside via `tmux send-keys` (verified).
   - **Confirm `crossSessionInbound: accept` is set before spawning**: a spawned seat has no human
     to approve inbound messages, so without it the startup handshake goes silent — a symptom
     indistinguishable from the trust-dialog stall. "Both sides" means every seat in an N-seat run.
