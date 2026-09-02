@@ -83,11 +83,11 @@ retires when the work is done.
 
 What changes for you is where your attention goes. You watch the watcher chat only. Questions
 and reports from every implementer funnel into it; items that need your decision are collected in
-a file (`PENDING.md`) instead of interrupting you one by one, and you answer in a second file
-(`ANSWERS.md`), so nothing scrolls out of reach before you get to it. The watcher also handles
-the mechanics: a startup handshake for each session, stall detection and recovery when one goes
-quiet, and cleanup afterwards (retiring a session still requires your instruction — it may hold
-uncommitted work).
+a file instead of interrupting you one by one, and you answer in a second one — `PENDING.md` and
+`ANSWERS.md` under `_ai/tasks/<slug>/` — so nothing scrolls out of reach before you get to it.
+The watcher also handles the mechanics: a startup handshake for each session, stall detection and
+recovery when one goes quiet, and cleanup afterwards (retiring a session still requires your
+instruction — it may hold uncommitted work).
 
 ```mermaid
 flowchart TB
@@ -222,9 +222,11 @@ Auditing is the point of the watcher role, so be aware of what it touches:
 - During discovery, the invoked side (either role) may read up to two fresh session logs in the
   same project to identify the peer from its latest user message, before messaging it. It quotes
   file paths, never log content, to candidates.
-- One of the two sessions writes coordination files inside the repository: the task contract
-  (`_ai/tasks/<slug>/TASK.md`) and, with a Codex peer, `pair-inbox.md` / `pair-outbox.md` in the
-  same `_ai/tasks/<slug>/` (main checkout). Keep `_ai/` out of version control (`.gitignore`).
+- One of the two sessions writes coordination files inside the repository, all under
+  `_ai/tasks/<slug>/` in the main checkout: the task contract (`TASK.md`), the watcher's list of
+  decisions waiting on you (`PENDING.md`) and your answers to them (`ANSWERS.md`), and, with a
+  Codex peer, `pair-inbox.md` / `pair-outbox.md`. Keep `_ai/` out of version control
+  (`.gitignore`).
 - For code changes, the pair creates a task branch and a separate git worktree — normally the
   implementer; the watcher does it instead when the Codex sandbox cannot write to `.git`. Work
   never happens on the `main` checkout.
