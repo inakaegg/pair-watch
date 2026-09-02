@@ -1,8 +1,12 @@
 # Role brief for the implementer (template sent by the watcher)
 
-Replace `{TASK}` `{MY_ADDR}` `{MY_JSONL}` with real values before sending.
+Replace `{WATCHER_SESSION_ID}` `{TASK}` `{MY_ADDR}` `{MY_JSONL}` with real values before sending.
+Keep the `pw-watcher:` line first: it is what binds the seat to this watcher (see SKILL.md,
+"Seat identity").
 
 ---
+
+pw-watcher: {WATCHER_SESSION_ID}
 
 Starting a two-seat setup. This side is the watcher (spec, verification, review coordination; no code changes). You are the implementer.
 

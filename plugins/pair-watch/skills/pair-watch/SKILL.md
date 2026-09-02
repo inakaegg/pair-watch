@@ -47,7 +47,8 @@ the peer, delivers the peer's role brief (from `assets/`), and starts the setup.
 | `WATCH_ENDED role=implementer` | Codex implementer (outbox) | inbox file watch stopped after ~30 min; nudge the implementer chat |
 | `WATCH_ENDED role=watcher` | Codex watcher (own chat) | outbox file watch stopped after ~30 min; nudge the watcher chat |
 | `pair-inbox.md` / `pair-outbox.md` | watcher / implementer | transport C files under `_ai/tasks/<slug>/` in the main checkout |
-| `{TASK} {MY_ADDR} {MY_JSONL} {INBOX} {OUTBOX} {WATCH_SCRIPT}` | brief sender | placeholders that must be replaced before sending |
+| `pw-watcher: <watcher session id>` | watcher (brief's first line) | binds the seat to the watcher that sent the brief; stays first so it lands in the seat's own session record |
+| `{WATCHER_ID} {TASK} {MY_ADDR} {MY_JSONL} {INBOX} {OUTBOX} {WATCH_SCRIPT}` | brief sender | placeholders that must be replaced before sending |
 
 ## Procedure
 
@@ -124,7 +125,9 @@ the peer, delivers the peer's role brief (from `assets/`), and starts the setup.
 4. **Deliver the role brief** — If you are the watcher, read the implementer brief
    (`assets/impl-brief.md` for a Claude peer, `assets/impl-brief-codex.md` for a
    Codex peer); if you are the implementer, read `assets/watch-brief.md`. Fill the
-   placeholders and deliver it (Claude: SendMessage; Codex: inbox file). While your own address
+   placeholders and deliver it (Claude: SendMessage; Codex: inbox file). `{WATCHER_ID}`
+   is the watcher's own full session id, and the `pw-watcher:` line it fills stays first — that
+   line is what binds the seat (see "Seat identity" below). While your own address
    (`{MY_ADDR}`) is unknown, write "reply to the `from` of this message". Done when: the brief is
    delivered and the peer returned a start declaration (implementer) or an acknowledgement (watcher).
 5. **Work loop** — From here on, also follow the operating rules of your own role's brief (the asset
@@ -181,46 +184,70 @@ an improvisation, with these adjustments:
   A cross-seat finding (a flake one seat hits in another seat's area) is routed through the
   watcher, never seat-to-seat.
 - **Trade-offs to tell the user up front.** Human confirmation cannot keep up with N seats in real
-  time: decisions that need the user pile up, so the watcher keeps a single pending list (pushes,
-  branch deletions, diff discards, test-expectation changes) and presents it at an agreed
-  checkpoint instead of interrupting per item. Watcher context also grows with every seat — long
+  time: decisions that need the user pile up, so the watcher collects them in one place (next
+  bullet) instead of interrupting per item. Watcher context also grows with every seat — long
   runs should compact or checkpoint. Seat context is a budget the agents cannot manage: only the
   human can compact an interactive session, so assigning a seat successive tasks fills its context
   with the previous tasks' history. Prefer routing a new, unrelated task to the freshest seat, and
   tell the user when a seat is worth compacting (or replacing with a fresh session) between tasks.
   The independence guarantee is per pair (watcher ↔ seat); seats are not independent of each
   other's mistakes when their scopes touch.
+- **Pending decisions live in two files, not in the chat.** A chat scrolls, so a question asked
+  mid-run is expensive for the user to find again, and both sides writing one file collides. The
+  watcher owns `_ai/tasks/<slug>/PENDING.md` in the main checkout: one entry per item needing the
+  user (pushes, branch deletions, diff discards, test-expectation changes), each with an id
+  `P<n>`, the background, the options, the default, and a deadline; resolved entries are copied
+  to a "done" section at the end. The user owns `_ai/tasks/<slug>/ANSWERS.md`: one line per item,
+  `P<n> => <answer>`, last line wins if an id repeats. Neither side edits the other's file. The
+  watcher watches `ANSWERS.md`, forwards each answer to the seat it belongs to, and moves the
+  entry to done. An item whose entry says it may proceed on its default needs no answer — but
+  permission items are never such an item: for push, PR, merge, deletions, and discards, silence
+  is not approval, however long it lasts. Both files sit under `_ai/`, outside git.
 - **Seat identity: every seat is bound to the watcher that spawned it.** Reusing a seat that
   belongs to another run — or killing one that another watcher still drives — has happened when
   seats were only told apart by generic names (`pw-seat-a`) and idle state. The binding must not
   depend on tmux, because the `script` route has no session name to carry it. Rules:
   - The binding lives in two places that exist on every route. (1) The brief's first line is
-    `pw-watcher: <full watcher session id>`; it lands in the seat's own session jsonl, so the
-    owner of any seat can be found by grepping that seat's jsonl for `pw-watcher:`. (2) The
-    watcher writes a registry entry `~/.local/state/pair-watch/seats/<watcher-id>/<seat>.json`
-    at spawn: seat label, project directory, launch route (tmux session name or pty output
-    file), the seat's session id once the handshake returns it, and the start timestamp. Under
-    tmux the session name `pw-<watcher-id8>-<letter>` is a convenience for humans on top of
-    this, not the source of truth.
+    `pw-watcher: <full watcher session id>` — both `assets/impl-brief.md` and
+    `assets/impl-brief-codex.md` carry it as their `{WATCHER_ID}` placeholder, so the
+    marker reaches the seat on every route without ad-hoc rewriting. It lands in the seat's own
+    session jsonl (Codex: rollout file), so the owner of any seat can be found by grepping that
+    seat's record for `pw-watcher:`. (2) The watcher writes a registry entry
+    `~/.local/state/pair-watch/seats/<watcher-id>/<run-id>/<seat>.json` at spawn: seat label,
+    project directory, launch route (tmux session name or pty output file), the seat's session
+    id once the handshake returns it, and the start timestamp. `<run-id>` is the run's start time
+    (ISO-8601, to the second), so a second run from the same watcher chat cannot overwrite the
+    entries of seats the first run still owns. Under tmux the session name
+    `pw-<watcher-id8>-<letter>` is a convenience for humans on top of this, not the source of
+    truth.
   - Before messaging, reusing, or closing any seat, the watcher checks the registry (its own
     `<watcher-id>` directory) and, for anything not in it, the seat's jsonl. Only seats bound to
-    its own id are its seats. Seats bound to another id, or with no binding at all (legacy
-    names, user-opened sessions), are foreign: never message them, never assign them work,
-    never treat them as idle capacity.
+    its own id are its seats. Seats bound to another id are foreign: never message them, never
+    assign them work, never treat them as idle capacity.
+  - An unbound seat is not automatically foreign, or the user-opened flow above could never
+    start: a chat the user just opened carries no marker until a brief reaches it. Exactly two
+    kinds of unbound seat may be claimed — (i) a seat the user named explicitly for this run,
+    and (ii) a seat the watcher launched itself and has not yet completed the handshake with.
+    Claiming means sending the brief; the binding takes effect the moment its `pw-watcher:`
+    line lands. Every other unbound seat (legacy names, sessions the user opened for something
+    else) is left alone.
   - Fresh seats by default. A new run spawns new seats; a leftover seat is not capacity, it is
-    context already spent. The watcher may close a foreign seat only when all three hold: the
-    seat is idle at its prompt (`tmux capture-pane`, or the pty output file), its owning watcher
-    session is gone (not in ListAgents, and that watcher's jsonl has not changed for more than an
-    hour), and the seat's checkout has no uncommitted diff. Otherwise list it to the user and
-    leave it alone.
+    context already spent. The watcher never closes a foreign seat, however idle it looks — the
+    evidence needed to call one abandoned (its pty output file, its checkout) lives in another
+    watcher's registry, so the judgement cannot be made from here. List the leftovers to the
+    user and leave them running; closing them is the user's call.
   - At the end of a run the watcher offers to close its own seats and removes their registry
     entries once closed (the seat-retirement rule below still requires the user's word), so
     leftovers do not accumulate for the next run.
-- **Model and effort of the seats.** Built-in defaults: implementer seats `opus` at `xhigh`,
-  the watcher `fable` at `low`. The user's explicit words in the invocation override them
-  (`/pair-watch:pair-watch <task> — implementer: opus(xhigh), watcher: fable(low)`). Pair-watch
-  reads no other tool's configuration for this. The watcher states the values it will use in its
-  first reply, so a wrong default is caught before the first spawn.
+- **Model and effort of the seats.** The default `opus` at `xhigh` applies to the sessions
+  pair-watch launches, i.e. implementer seats. The watcher is the chat the user already started,
+  so this procedure cannot set its model or effort: `fable` at `low` is a recommendation for
+  which chat to run pair-watch from, not a value the skill applies. The user's explicit words in
+  the invocation override the launch defaults (`/pair-watch:pair-watch <task> — implementer:
+  opus(xhigh)`). Pair-watch reads no other tool's configuration for this. In its first reply the
+  watcher states the model and effort it will launch seats with, and the model it is itself
+  running as; if that does not match what the user asked of the watcher, it says so and asks
+  whether to restart pair-watch from a different chat — before the first spawn.
 - **Watcher-spawned seats (verified on macOS).** Seats do not have to be user-opened: with the
   user's explicit go-ahead for that run, the watcher can launch a seat itself as a real CLI
   session, choosing model and reasoning effort freely (`claude --model ... --effort ...`) — this
