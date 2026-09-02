@@ -235,11 +235,12 @@ an improvisation, with these adjustments:
     evidence needed to call one abandoned (its pty output file, its checkout) lives in another
     watcher's registry, so the judgement cannot be made from here. List the leftovers to the
     user and leave them running; closing them is the user's call.
-  - The watcher retires each of its own seats when that seat's task ends (seat-retirement rule
-    below). Retiring does not delete the entry — it marks it `retired` with the close timestamp,
-    so the session id stays available for a later `--resume`. The entries are removed together at
-    the end of the run, after anything still open is closed, so leftovers do not accumulate for
-    the next run.
+  - The watcher retires each seat it spawned when that seat's task ends (seat-retirement rule
+    below); a seat the user opened is retired only on the user's word, so it is left running
+    unless they say so. Retiring does not delete the entry — it marks it `retired` with the
+    close timestamp, so the session id stays available for a later `--resume`. At the end of the
+    run the watcher closes any spawned seat still open and removes the entries of every closed
+    seat together, so leftovers do not accumulate for the next run.
 - **Model and effort of the seats.** The default `opus` at `xhigh` applies to the sessions
   pair-watch launches, i.e. implementer seats. The watcher is the chat the user already started,
   so this procedure cannot set its model or effort: `fable` at `low` is a recommendation for
