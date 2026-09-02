@@ -105,9 +105,12 @@ flowchart TB
     end
 ```
 
-The practical ceiling is three or four implementers. The bottleneck is not the sessions — it is
-the review throughput the watcher can coordinate, and the decisions that queue up for you.
-Operational detail lives in the skill's "Multiple implementer seats" section.
+There is no fixed ceiling on implementers. Reviewers are separate processes and run in parallel,
+so review throughput is not the limit; what bounds the number is the shape of the work — seats
+need disjoint files and branches, so you can only run as many as you have independent tasks ready
+— plus the decisions that queue up for you and the watcher's own growing context. Add seats as
+tasks become independent. Operational detail lives in the skill's "Multiple implementer seats"
+section.
 
 **Permissions for watcher-launched sessions.** A watcher running in the default (auto)
 permission mode is typically blocked from launching sessions until you allowlist the tmux
@@ -128,7 +131,8 @@ that work**.
 
 Most existing mechanisms run workers you cannot talk to. Subagents — Claude's and Codex's
 alike — and scripted workflows live inside the session that spawned them: you cannot interject
-mid-task, they inherit the parent's model and reasoning settings, and they end with it. What
+mid-task, and they end with it. (Their settings differ: a plain subagent inherits the parent's
+model and reasoning effort, while a scripted workflow can set both per agent.) What
 matters more is where their results go. A worker reports to the orchestrator that steered it,
 and the orchestrator **summarises the report into its own context and moves on** — it grades
 its own plan, and nobody re-checks the claims against the artifacts. For disposable research
