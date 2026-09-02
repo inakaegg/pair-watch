@@ -164,9 +164,13 @@ an improvisation, with these adjustments:
   or source file. Each brief states the seat's own scope AND the other seats' scopes with the
   files/branches to avoid. Shared files (a ROADMAP, a settings registry) require a one-line
   check-in with the watcher before any seat edits them.
-- **Gates run per seat, serialized by the watcher.** Each seat's work passes the same gates as in
-  the two-seat flow; the watcher launches every reviewer, so review throughput is the bottleneck —
-  keep seats to what the watcher can audit (3–4 is a practical ceiling).
+- **Gates run per seat.** Each seat's work passes the same gates as in the two-seat flow; the
+  watcher launches every reviewer, but reviewers are separate processes and run in parallel, so
+  review throughput is not the limit. There is no fixed seat ceiling. What actually bounds N:
+  the task graph (seats need disjoint files and branches, so N is at most the number of
+  independent tasks ready now), the pile of decisions that need the human (see the trade-offs
+  bullet), and the watcher's own context growth. Six seats under a low-effort watcher have been
+  planned without strain; add seats as tasks become independent rather than capping by count.
 - **The watcher is less busy than it looks.** Observed in live runs: with 4 seats and several
   reviews in flight, the watcher's own work stays light, because it only routes messages, launches
   reviewers, and forwards verdicts — the heavy lifting (implementation, review) runs elsewhere and
@@ -186,6 +190,37 @@ an improvisation, with these adjustments:
   tell the user when a seat is worth compacting (or replacing with a fresh session) between tasks.
   The independence guarantee is per pair (watcher ↔ seat); seats are not independent of each
   other's mistakes when their scopes touch.
+- **Seat identity: every seat is bound to the watcher that spawned it.** Reusing a seat that
+  belongs to another run — or killing one that another watcher still drives — has happened when
+  seats were only told apart by generic names (`pw-seat-a`) and idle state. The binding must not
+  depend on tmux, because the `script` route has no session name to carry it. Rules:
+  - The binding lives in two places that exist on every route. (1) The brief's first line is
+    `pw-watcher: <full watcher session id>`; it lands in the seat's own session jsonl, so the
+    owner of any seat can be found by grepping that seat's jsonl for `pw-watcher:`. (2) The
+    watcher writes a registry entry `~/.local/state/pair-watch/seats/<watcher-id>/<seat>.json`
+    at spawn: seat label, project directory, launch route (tmux session name or pty output
+    file), the seat's session id once the handshake returns it, and the start timestamp. Under
+    tmux the session name `pw-<watcher-id8>-<letter>` is a convenience for humans on top of
+    this, not the source of truth.
+  - Before messaging, reusing, or closing any seat, the watcher checks the registry (its own
+    `<watcher-id>` directory) and, for anything not in it, the seat's jsonl. Only seats bound to
+    its own id are its seats. Seats bound to another id, or with no binding at all (legacy
+    names, user-opened sessions), are foreign: never message them, never assign them work,
+    never treat them as idle capacity.
+  - Fresh seats by default. A new run spawns new seats; a leftover seat is not capacity, it is
+    context already spent. The watcher may close a foreign seat only when all three hold: the
+    seat is idle at its prompt (`tmux capture-pane`, or the pty output file), its owning watcher
+    session is gone (not in ListAgents, and that watcher's jsonl has not changed for more than an
+    hour), and the seat's checkout has no uncommitted diff. Otherwise list it to the user and
+    leave it alone.
+  - At the end of a run the watcher offers to close its own seats and removes their registry
+    entries once closed (the seat-retirement rule below still requires the user's word), so
+    leftovers do not accumulate for the next run.
+- **Model and effort of the seats.** Built-in defaults: implementer seats `opus` at `xhigh`,
+  the watcher `fable` at `low`. The user's explicit words in the invocation override them
+  (`/pair-watch:pair-watch <task> — implementer: opus(xhigh), watcher: fable(low)`). Pair-watch
+  reads no other tool's configuration for this. The watcher states the values it will use in its
+  first reply, so a wrong default is caught before the first spawn.
 - **Watcher-spawned seats (verified on macOS).** Seats do not have to be user-opened: with the
   user's explicit go-ahead for that run, the watcher can launch a seat itself as a real CLI
   session, choosing model and reasoning effort freely (`claude --model ... --effort ...`) — this
@@ -282,6 +317,27 @@ an improvisation, with these adjustments:
   watcher-spawned seats: **stall recovery** — kill + `claude --resume <session-id>` of a seat
   stuck on an on-screen chooser preserves its context and is the watcher's call, reported to the
   user afterwards.
+
+## Pair-watch or the Workflow tool?
+
+Both run several agents at once; they differ in what the agents are.
+
+- **Pair-watch seats are interactive sessions.** Each seat can be messaged mid-task, nudged when
+  its log stalls, given a changed brief, or opened by the user to look at. Each seat carries its
+  own model and effort (`claude --model … --effort …`). Reviewers are separate processes, so a
+  different-lineage reviewer (Codex) is a first-class choice. Use pair-watch when the work is
+  long, the user may add or redirect tasks while it runs, or a seat must hold uncommitted state
+  across several instructions.
+- **Workflow agents are subagents driven by a script.** They also take a per-agent `model` and
+  `effort` (`agent(prompt, {model, effort})`), so implementers at `opus`/`xhigh` are possible
+  there too — the "effort is inherited" limitation applies to the plain Agent tool, not to
+  Workflow. But the agents are Claude models only: a Codex reviewer is reachable only when an
+  agent shells out to `codex exec`, and no agent is a chat the user can join. Changing course
+  means editing the script and resuming (completed `agent()` calls are replayed from cache). Use
+  Workflow for a batch of same-shaped, pre-scoped work — N translations compared on the same
+  phrases, N findings each verified from several lenses — where determinism beats interactivity.
+- **Mixing is fine.** A pair-watch seat may run a Workflow inside its own task for a fan-out step;
+  the watcher does not.
 
 ## Wrong shortcut → correct action
 
