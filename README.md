@@ -84,9 +84,9 @@ retires when the work is done.
 What changes for you is where your attention goes. You watch the watcher chat only. Questions
 and reports from every implementer funnel into it; items that need your decision are collected in
 a file (`PENDING.md`) instead of interrupting you one by one, and you answer in a second file
-(`ANSWERS.md`), so nothing scrolls out of reach before you get to it. The watcher also handles the mechanics:
-a startup handshake for each session, stall detection and recovery when one goes quiet, and
-cleanup afterwards (retiring a session still requires your instruction — it may hold
+(`ANSWERS.md`), so nothing scrolls out of reach before you get to it. The watcher also handles
+the mechanics: a startup handshake for each session, stall detection and recovery when one goes
+quiet, and cleanup afterwards (retiring a session still requires your instruction — it may hold
 uncommitted work).
 
 ```mermaid
@@ -107,11 +107,11 @@ flowchart TB
 ```
 
 There is no fixed ceiling on implementers. Reviewers are separate processes and run in parallel,
-so review throughput is not the limit; what bounds the number is the shape of the work — seats
-need disjoint files and branches, so you can only run as many as you have independent tasks ready
-— plus the decisions that queue up for you and the watcher's own growing context. Add seats as
-tasks become independent. Operational detail lives in the skill's "Multiple implementer seats"
-section.
+so review throughput is not the limit. What bounds the number is the shape of the work:
+implementers need disjoint files and branches, so you can run only as many as you have
+independent tasks ready. Two more limits grow with the count — the decisions that queue up for
+you, and the watcher's own context. Add implementers as tasks become independent. Operational
+detail lives in the skill's "Multiple implementer seats" section.
 
 **Permissions for watcher-launched sessions.** A watcher running in the default (auto)
 permission mode is typically blocked from launching sessions until you allowlist the tmux
@@ -133,11 +133,13 @@ that work**.
 Most existing mechanisms run workers you cannot talk to. Subagents — Claude's and Codex's
 alike — and scripted workflows live inside the session that spawned them: you cannot interject
 mid-task, and they end with it. (Their settings differ: a plain subagent inherits the parent's
-model and reasoning effort, while a scripted workflow can set both per agent.) What
-matters more is where their results go. A worker reports to the orchestrator that steered it,
-and the orchestrator **summarises the report into its own context and moves on** — it grades
-its own plan, and nobody re-checks the claims against the artifacts. For disposable research
-that is exactly right. For changes you intend to commit, it is the weak link.
+reasoning effort and cannot raise it, while a scripted workflow — Dynamic workflows in the table
+below — sets effort, and model, per agent.) What matters more is where their results go. A worker
+reports to the orchestrator that steered it, and the orchestrator **summarises the report into
+its own context and moves on** — it grades its own plan, and nobody re-checks the claims against
+the artifacts. A script can build cross-checking into the run, but that checking still happens
+inside the same orchestrator. For disposable research that is exactly right. For changes you
+intend to commit, it is the weak link.
 
 Plain cross-session messaging removes the first limitation — both sessions are ordinary chats —
 but it is only a channel. Wire two sessions together and you reproduce the same
