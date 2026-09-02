@@ -1,4 +1,4 @@
-# pair-watch
+# <img src="assets/pair-watch-icon.svg" alt="" width="80" align="middle"> pair-watch
 
 🇯🇵 日本語: [README.ja.md](README.ja.md)
 
