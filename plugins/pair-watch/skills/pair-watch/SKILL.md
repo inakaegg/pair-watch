@@ -211,7 +211,8 @@ an improvisation, with these adjustments:
     seat's record for `pw-watcher:`. (2) The watcher writes a registry entry
     `~/.local/state/pair-watch/seats/<watcher-id>/<run-id>/<seat>.json` at spawn: seat label,
     project directory, launch route (tmux session name or pty output file), the seat's session
-    id once the handshake returns it, and the start timestamp. `<run-id>` is the run's start time
+    id once the handshake returns it, the start timestamp, and — once the seat is retired — a
+    `retired` marker with the close timestamp. `<run-id>` is the run's start time
     (ISO-8601, to the second), so a second run from the same watcher chat cannot overwrite the
     entries of seats the first run still owns. The tmux session name carries the run for the same
     reason: `pw-<watcher-id8>-<run-hhmmss>-<letter>`, because `tmux new-session -s` fails on a
@@ -235,8 +236,10 @@ an improvisation, with these adjustments:
     watcher's registry, so the judgement cannot be made from here. List the leftovers to the
     user and leave them running; closing them is the user's call.
   - The watcher retires each of its own seats when that seat's task ends (seat-retirement rule
-    below) and removes the registry entry once the seat is closed, so leftovers do not
-    accumulate for the next run; anything still open at the end of a run is closed then.
+    below). Retiring does not delete the entry — it marks it `retired` with the close timestamp,
+    so the session id stays available for a later `--resume`. The entries are removed together at
+    the end of the run, after anything still open is closed, so leftovers do not accumulate for
+    the next run.
 - **Model and effort of the seats.** The default `opus` at `xhigh` applies to the sessions
   pair-watch launches, i.e. implementer seats. The watcher is the chat the user already started,
   so this procedure cannot set its model or effort: `fable` at `low` is a recommendation for
@@ -342,8 +345,9 @@ an improvisation, with these adjustments:
   report, with its branch committed or its uncommitted state handed over in the task's `_ai/`
   record, and never while it still holds unreported work. Nothing is lost by the kill: the seat's
   session log stays on disk and `claude --resume <session-id>` brings the conversation back with
-  its context when someone later needs to ask that seat something, so keep the session id in the
-  registry entry. Leaving finished seats running instead costs memory per process and clutters
+  its context when someone later needs to ask that seat something — which is why the registry
+  entry is marked `retired` rather than deleted at the kill, and keeps the session id until the
+  run ends. Leaving finished seats running instead costs memory per process and clutters
   the session list once a run reaches tens of seats. A user-opened seat is retired only on the
   user's word. Stall recovery of a spawned seat (kill + `claude --resume <session-id>` of a seat
   stuck on an on-screen chooser) is likewise the watcher's call, reported to the user afterwards.
