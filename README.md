@@ -82,8 +82,9 @@ with your approval, per run — sessions the watcher launches under tmux or `scr
 retires when the work is done.
 
 What changes for you is where your attention goes. You watch the watcher chat only. Questions
-and reports from every implementer funnel into it; items that need your decision accumulate as a
-pending list instead of interrupting you one by one. The watcher also handles the mechanics:
+and reports from every implementer funnel into it; items that need your decision are collected in
+a file (`PENDING.md`) instead of interrupting you one by one, and you answer in a second file
+(`ANSWERS.md`), so nothing scrolls out of reach before you get to it. The watcher also handles the mechanics:
 a startup handshake for each session, stall detection and recovery when one goes quiet, and
 cleanup afterwards (retiring a session still requires your instruction — it may hold
 uncommitted work).
@@ -98,7 +99,7 @@ flowchart TB
     end
     subgraph multi["Multi-implementer run — you watch one chat"]
         direction LR
-        U2([You]) --- W2["Watcher chat<br/>(questions collect here<br/>as a pending list)"]
+        U2([You]) --- W2["Watcher chat<br/>(questions collect here;<br/>decisions go to a file)"]
         W2 <-->|"brief · report"| A["Implementer A"]
         W2 <-->|"brief · report"| B["Implementer B"]
         W2 <-->|"launch · recover · retire"| C["Implementer C<br/>(tmux / script pty)"]
@@ -159,8 +160,8 @@ pair-watch takes the channel and adds the missing protocol:
   review-gate reviewer, who is given a fresh context and never shown the implementer's
   conversation.
 - **Automated seating.** One command determines roles, finds the peer, and delivers the briefs.
-- **One place for decisions.** Anything that needs a human lands in the watcher chat as a
-  pending list, however many implementers are running.
+- **One place for decisions.** Anything that needs a human is collected in one file, and you
+  answer in another, however many implementers are running.
 - **Seats beyond Claude.** Codex cannot join cross-session messaging, so a sequenced file
   transport carries the same roles and duties.
 - **Multi-implementer operation.** Scope partitioning, launching sessions with your approval,
