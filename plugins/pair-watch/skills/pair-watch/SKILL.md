@@ -207,9 +207,11 @@ an improvisation, with these adjustments:
     project directory, launch route (tmux session name or pty output file), the seat's session
     id once the handshake returns it, and the start timestamp. `<run-id>` is the run's start time
     (ISO-8601, to the second), so a second run from the same watcher chat cannot overwrite the
-    entries of seats the first run still owns. Under tmux the session name
-    `pw-<watcher-id8>-<letter>` is a convenience for humans on top of this, not the source of
-    truth.
+    entries of seats the first run still owns. The tmux session name carries the run for the same
+    reason: `pw-<watcher-id8>-<run-hhmmss>-<letter>`, because `tmux new-session -s` fails on a
+    name that already exists, and without the run part a second run collides with a seat the
+    first one is still using. The name is a convenience for humans on top of the registry, not
+    the source of truth.
   - Before messaging, reusing, or closing any seat, the watcher checks the registry (its own
     `<watcher-id>` directory) and, for anything not in it, the seat's jsonl. Only seats bound to
     its own id are its seats. Seats bound to another id are foreign: never message them, never

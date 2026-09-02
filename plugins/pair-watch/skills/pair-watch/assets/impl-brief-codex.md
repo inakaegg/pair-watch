@@ -1,12 +1,12 @@
 # Role brief for a Codex-chat implementer (template the watcher writes into pair-inbox.md)
 
-Replace `{WATCHER_SESSION_ID}` `{TASK}` `{INBOX}` `{OUTBOX}` `{MY_JSONL}` `{WATCH_SCRIPT}` with real
+Replace `{WATCHER_ID}` `{TASK}` `{INBOX}` `{OUTBOX}` `{MY_JSONL}` `{WATCH_SCRIPT}` with real
 values before writing. Keep the `pw-watcher:` line first: it is what binds the seat to this
 watcher (see SKILL.md, "Seat identity").
 
 ---
 
-pw-watcher: {WATCHER_SESSION_ID}
+pw-watcher: {WATCHER_ID}
 
 Starting a two-seat setup. This side is the watcher (spec, verification, review coordination; no code changes), in a Claude or Codex session. You are the Codex implementer. Instructions to you are written in this file ({INBOX}); your reports go to {OUTBOX} by appending.
 
