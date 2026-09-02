@@ -105,9 +105,12 @@ flowchart TB
     end
 ```
 
-The practical ceiling is three or four implementers. The bottleneck is not the sessions — it is
-the review throughput the watcher can coordinate, and the decisions that queue up for you.
-Operational detail lives in the skill's "Multiple implementer seats" section.
+There is no fixed ceiling on implementers. Reviewers are separate processes and run in parallel,
+so review throughput is not the limit. What bounds the number is the shape of the work:
+implementers need disjoint files and branches, so you can run only as many as you have
+independent tasks ready. Two more limits grow with the count — the decisions that queue up for
+you, and the watcher's own context. Add implementers as tasks become independent. Operational
+detail lives in the skill's "Multiple implementer seats" section.
 
 **Permissions for watcher-launched sessions.** A watcher running in the default (auto)
 permission mode is typically blocked from launching sessions until you allowlist the tmux
@@ -128,11 +131,14 @@ that work**.
 
 Most existing mechanisms run workers you cannot talk to. Subagents — Claude's and Codex's
 alike — and scripted workflows live inside the session that spawned them: you cannot interject
-mid-task, they inherit the parent's model and reasoning settings, and they end with it. What
-matters more is where their results go. A worker reports to the orchestrator that steered it,
-and the orchestrator **summarises the report into its own context and moves on** — it grades
-its own plan, and nobody re-checks the claims against the artifacts. For disposable research
-that is exactly right. For changes you intend to commit, it is the weak link.
+mid-task, and they end with it. (Their settings differ: a plain subagent inherits the parent's
+reasoning effort and cannot raise it, while a scripted workflow — Dynamic workflows in the table
+below — sets effort, and model, per agent.) What matters more is where their results go. A worker
+reports to the orchestrator that steered it, and the orchestrator **summarises the report into
+its own context and moves on** — it grades its own plan, and nobody re-checks the claims against
+the artifacts. A script can build cross-checking into the run, but that checking still happens
+inside the same orchestrator. For disposable research that is exactly right. For changes you
+intend to commit, it is the weak link.
 
 Plain cross-session messaging removes the first limitation — both sessions are ordinary chats —
 but it is only a channel. Wire two sessions together and you reproduce the same
@@ -218,6 +224,11 @@ Auditing is the point of the watcher role, so be aware of what it touches:
 - One of the two sessions writes coordination files inside the repository: the task contract
   (`_ai/tasks/<slug>/TASK.md`) and, with a Codex peer, `pair-inbox.md` / `pair-outbox.md` in the
   same `_ai/tasks/<slug>/` (main checkout). Keep `_ai/` out of version control (`.gitignore`).
+- When the watcher launches sessions itself, it also writes a small registry outside the
+  repository: one file per seat at `~/.local/state/pair-watch/seats/<watcher-id>/<run-id>/`,
+  recording the seat's label, project directory, launch route and session id so the watcher can
+  tell its own seats from another run's. The watcher deletes a seat's entry when that seat is
+  closed; entries left by an interrupted run are safe to delete by hand.
 - For code changes, the pair creates a task branch and a separate git worktree — normally the
   implementer; the watcher does it instead when the Codex sandbox cannot write to `.git`. Work
   never happens on the `main` checkout.

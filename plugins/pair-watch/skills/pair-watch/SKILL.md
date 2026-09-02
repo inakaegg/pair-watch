@@ -47,7 +47,8 @@ the peer, delivers the peer's role brief (from `assets/`), and starts the setup.
 | `WATCH_ENDED role=implementer` | Codex implementer (outbox) | inbox file watch stopped after ~30 min; nudge the implementer chat |
 | `WATCH_ENDED role=watcher` | Codex watcher (own chat) | outbox file watch stopped after ~30 min; nudge the watcher chat |
 | `pair-inbox.md` / `pair-outbox.md` | watcher / implementer | transport C files under `_ai/tasks/<slug>/` in the main checkout |
-| `{TASK} {MY_ADDR} {MY_JSONL} {INBOX} {OUTBOX} {WATCH_SCRIPT}` | brief sender | placeholders that must be replaced before sending |
+| `pw-watcher: <watcher session id>` | watcher (brief's first line) | binds the seat to the watcher that sent the brief; stays first so it lands in the seat's own session record |
+| `{WATCHER_ID} {TASK} {MY_ADDR} {MY_JSONL} {INBOX} {OUTBOX} {WATCH_SCRIPT}` | brief sender | placeholders that must be replaced before sending |
 
 ## Procedure
 
@@ -124,7 +125,9 @@ the peer, delivers the peer's role brief (from `assets/`), and starts the setup.
 4. **Deliver the role brief** — If you are the watcher, read the implementer brief
    (`assets/impl-brief.md` for a Claude peer, `assets/impl-brief-codex.md` for a
    Codex peer); if you are the implementer, read `assets/watch-brief.md`. Fill the
-   placeholders and deliver it (Claude: SendMessage; Codex: inbox file). While your own address
+   placeholders and deliver it (Claude: SendMessage; Codex: inbox file). `{WATCHER_ID}`
+   is the watcher's own full session id, and the `pw-watcher:` line it fills stays first — that
+   line is what binds the seat (see "Seat identity" below). While your own address
    (`{MY_ADDR}`) is unknown, write "reply to the `from` of this message". Done when: the brief is
    delivered and the peer returned a start declaration (implementer) or an acknowledgement (watcher).
 5. **Work loop** — From here on, also follow the operating rules of your own role's brief (the asset
@@ -164,9 +167,13 @@ an improvisation, with these adjustments:
   or source file. Each brief states the seat's own scope AND the other seats' scopes with the
   files/branches to avoid. Shared files (a ROADMAP, a settings registry) require a one-line
   check-in with the watcher before any seat edits them.
-- **Gates run per seat, serialized by the watcher.** Each seat's work passes the same gates as in
-  the two-seat flow; the watcher launches every reviewer, so review throughput is the bottleneck —
-  keep seats to what the watcher can audit (3–4 is a practical ceiling).
+- **Gates run per seat.** Each seat's work passes the same gates as in the two-seat flow; the
+  watcher launches every reviewer, but reviewers are separate processes and run in parallel, so
+  review throughput is not the limit. There is no fixed seat ceiling. What actually bounds N:
+  the task graph (seats need disjoint files and branches, so N is at most the number of
+  independent tasks ready now), the pile of decisions that need the human (see the trade-offs
+  bullet), and the watcher's own context growth. Six seats under a low-effort watcher have been
+  planned without strain; add seats as tasks become independent rather than capping by count.
 - **The watcher is less busy than it looks.** Observed in live runs: with 4 seats and several
   reviews in flight, the watcher's own work stays light, because it only routes messages, launches
   reviewers, and forwards verdicts — the heavy lifting (implementation, review) runs elsewhere and
@@ -186,6 +193,53 @@ an improvisation, with these adjustments:
   tell the user when a seat is worth compacting (or replacing with a fresh session) between tasks.
   The independence guarantee is per pair (watcher ↔ seat); seats are not independent of each
   other's mistakes when their scopes touch.
+- **Seat identity: every seat is bound to the watcher that spawned it.** Reusing a seat that
+  belongs to another run — or killing one that another watcher still drives — has happened when
+  seats were only told apart by generic names (`pw-seat-a`) and idle state. The binding must not
+  depend on tmux, because the `script` route has no session name to carry it. Rules:
+  - The binding lives in two places that exist on every route. (1) The brief's first line is
+    `pw-watcher: <full watcher session id>` — both `assets/impl-brief.md` and
+    `assets/impl-brief-codex.md` carry it as their `{WATCHER_ID}` placeholder, so the
+    marker reaches the seat on every route without ad-hoc rewriting. It lands in the seat's own
+    session jsonl (Codex: rollout file), so the owner of any seat can be found by grepping that
+    seat's record for `pw-watcher:`. (2) The watcher writes a registry entry
+    `~/.local/state/pair-watch/seats/<watcher-id>/<run-id>/<seat>.json` at spawn: seat label,
+    project directory, launch route (tmux session name or pty output file), the seat's session
+    id once the handshake returns it, and the start timestamp. `<run-id>` is the run's start time
+    (ISO-8601, to the second), so a second run from the same watcher chat cannot overwrite the
+    entries of seats the first run still owns. The tmux session name carries the run for the same
+    reason: `pw-<watcher-id8>-<run-hhmmss>-<letter>`, because `tmux new-session -s` fails on a
+    name that already exists, and without the run part a second run collides with a seat the
+    first one is still using. The name is a convenience for humans on top of the registry, not
+    the source of truth.
+  - Before messaging, reusing, or closing any seat, the watcher checks the registry (its own
+    `<watcher-id>` directory) and, for anything not in it, the seat's jsonl. Only seats bound to
+    its own id are its seats. Seats bound to another id are foreign: never message them, never
+    assign them work, never treat them as idle capacity.
+  - An unbound seat is not automatically foreign, or the user-opened flow above could never
+    start: a chat the user just opened carries no marker until a brief reaches it. Exactly two
+    kinds of unbound seat may be claimed — (i) a seat the user named explicitly for this run,
+    and (ii) a seat the watcher launched itself and has not yet completed the handshake with.
+    Claiming means sending the brief; the binding takes effect the moment its `pw-watcher:`
+    line lands. Every other unbound seat (legacy names, sessions the user opened for something
+    else) is left alone.
+  - Fresh seats by default. A new run spawns new seats; a leftover seat is not capacity, it is
+    context already spent. The watcher never closes a foreign seat, however idle it looks — the
+    evidence needed to call one abandoned (its pty output file, its checkout) lives in another
+    watcher's registry, so the judgement cannot be made from here. List the leftovers to the
+    user and leave them running; closing them is the user's call.
+  - At the end of a run the watcher offers to close its own seats and removes their registry
+    entries once closed (the seat-retirement rule below still requires the user's word), so
+    leftovers do not accumulate for the next run.
+- **Model and effort of the seats.** The default `opus` at `xhigh` applies to the sessions
+  pair-watch launches, i.e. implementer seats. The watcher is the chat the user already started,
+  so this procedure cannot set its model or effort: `fable` at `low` is a recommendation for
+  which chat to run pair-watch from, not a value the skill applies. The user's explicit words in
+  the invocation override the launch defaults (`/pair-watch:pair-watch <task> — implementer:
+  opus(xhigh)`). Pair-watch reads no other tool's configuration for this. In its first reply the
+  watcher states the model and effort it will launch seats with, and the model it is itself
+  running as; if that does not match what the user asked of the watcher, it says so and asks
+  whether to restart pair-watch from a different chat — before the first spawn.
 - **Watcher-spawned seats (verified on macOS).** Seats do not have to be user-opened: with the
   user's explicit go-ahead for that run, the watcher can launch a seat itself as a real CLI
   session, choosing model and reasoning effort freely (`claude --model ... --effort ...`) — this
@@ -282,6 +336,27 @@ an improvisation, with these adjustments:
   watcher-spawned seats: **stall recovery** — kill + `claude --resume <session-id>` of a seat
   stuck on an on-screen chooser preserves its context and is the watcher's call, reported to the
   user afterwards.
+
+## Pair-watch or the Workflow tool?
+
+Both run several agents at once; they differ in what the agents are.
+
+- **Pair-watch seats are interactive sessions.** Each seat can be messaged mid-task, nudged when
+  its log stalls, given a changed brief, or opened by the user to look at. Each seat carries its
+  own model and effort (`claude --model … --effort …`). Reviewers are separate processes, so a
+  different-lineage reviewer (Codex) is a first-class choice. Use pair-watch when the work is
+  long, the user may add or redirect tasks while it runs, or a seat must hold uncommitted state
+  across several instructions.
+- **Workflow agents are subagents driven by a script.** They also take a per-agent `model` and
+  `effort` (`agent(prompt, {model, effort})`), so implementers at `opus`/`xhigh` are possible
+  there too — the "effort is inherited" limitation applies to the plain Agent tool, not to
+  Workflow. But the agents are Claude models only: a Codex reviewer is reachable only when an
+  agent shells out to `codex exec`, and no agent is a chat the user can join. Changing course
+  means editing the script and resuming (completed `agent()` calls are replayed from cache). Use
+  Workflow for a batch of same-shaped, pre-scoped work — N translations compared on the same
+  phrases, N findings each verified from several lenses — where determinism beats interactivity.
+- **Mixing is fine.** A pair-watch seat may run a Workflow inside its own task for a fan-out step;
+  the watcher does not.
 
 ## Wrong shortcut → correct action
 

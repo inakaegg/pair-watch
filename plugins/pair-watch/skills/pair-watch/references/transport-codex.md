@@ -69,8 +69,9 @@ for a total of about 30 minutes.
 
 3C. **Fix the location and set up the channel** — Determine the repository root and choose a unique
   `_ai/tasks/<task-slug>/`. Create the task contract first when absent. Create inbox/outbox and write
-  `assets/impl-brief-codex.md` as inbox sequence 1, replacing `{TASK}`, `{INBOX}`, `{OUTBOX}`,
-  `{MY_JSONL}`, and `{WATCH_SCRIPT}` with real absolute paths. A Codex watcher must first pin its own
+  `assets/impl-brief-codex.md` as inbox sequence 1, replacing `{WATCHER_ID}` (the watcher's own
+  full session id, which fills the brief's first `pw-watcher:` line), `{TASK}`, `{INBOX}`,
+  `{OUTBOX}`, `{MY_JSONL}`, and `{WATCH_SCRIPT}` with real values. A Codex watcher must first pin its own
   rollout path and thread id. Done when: the contract and both files exist and inbox sequence 1 is
   complete.
 
