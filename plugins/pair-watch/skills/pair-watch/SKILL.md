@@ -305,8 +305,9 @@ an improvisation, with these adjustments:
     indistinguishable from the trust-dialog stall. "Both sides" means every seat in an N-seat run.
   - **The brief must route questions to the watcher**: tell the seat "no human watches this
     screen; anything that needs a decision goes via SendMessage to the watcher, never into your
-    own chat". The watcher answers from the task contract or puts the item on the pending list in
-    its own (visible) chat — the user keeps watching one chat, regardless of seat count.
+    own chat". The watcher answers from the task contract, or writes the item into `PENDING.md`
+    and says so in its own (visible) chat — the user keeps watching one chat and one file,
+    regardless of seat count.
   - **Monitor event-driven, not by polling.** The watcher acts only on signals: the startup
     handshake (seat must appear in ListAgents and answer an identification message within a
     deadline — if not, look at its screen: `tmux capture-pane` for tmux seats, the pty output
