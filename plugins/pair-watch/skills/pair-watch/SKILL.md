@@ -184,25 +184,15 @@ an improvisation, with these adjustments:
   A cross-seat finding (a flake one seat hits in another seat's area) is routed through the
   watcher, never seat-to-seat.
 - **Trade-offs to tell the user up front.** Human confirmation cannot keep up with N seats in real
-  time: decisions that need the user pile up, so the watcher collects them in one place (next
-  bullet) instead of interrupting per item. Watcher context also grows with every seat — long
+  time: decisions that need the user pile up, so the watcher keeps a single pending list (pushes,
+  branch deletions, diff discards, test-expectation changes) and presents it at an agreed
+  checkpoint instead of interrupting per item. Watcher context also grows with every seat — long
   runs should compact or checkpoint. Seat context is a budget the agents cannot manage: only the
   human can compact an interactive session, so assigning a seat successive tasks fills its context
   with the previous tasks' history. Prefer routing a new, unrelated task to the freshest seat, and
   tell the user when a seat is worth compacting (or replacing with a fresh session) between tasks.
   The independence guarantee is per pair (watcher ↔ seat); seats are not independent of each
   other's mistakes when their scopes touch.
-- **Pending decisions live in two files, not in the chat.** A chat scrolls, so a question asked
-  mid-run is expensive for the user to find again, and both sides writing one file collides. The
-  watcher owns `_ai/tasks/<slug>/PENDING.md` in the main checkout: one entry per item needing the
-  user (pushes, branch deletions, diff discards, test-expectation changes), each with an id
-  `P<n>`, the background, the options, the default, and a deadline; resolved entries are copied
-  to a "done" section at the end. The user owns `_ai/tasks/<slug>/ANSWERS.md`: one line per item,
-  `P<n> => <answer>`, last line wins if an id repeats. Neither side edits the other's file. The
-  watcher watches `ANSWERS.md`, forwards each answer to the seat it belongs to, and moves the
-  entry to done. An item whose entry says it may proceed on its default needs no answer — but
-  permission items are never such an item: for push, PR, merge, deletions, and discards, silence
-  is not approval, however long it lasts. Both files sit under `_ai/`, outside git.
 - **Seat identity: every seat is bound to the watcher that spawned it.** Reusing a seat that
   belongs to another run — or killing one that another watcher still drives — has happened when
   seats were only told apart by generic names (`pw-seat-a`) and idle state. The binding must not
@@ -305,9 +295,8 @@ an improvisation, with these adjustments:
     indistinguishable from the trust-dialog stall. "Both sides" means every seat in an N-seat run.
   - **The brief must route questions to the watcher**: tell the seat "no human watches this
     screen; anything that needs a decision goes via SendMessage to the watcher, never into your
-    own chat". The watcher answers from the task contract, or writes the item into `PENDING.md`
-    and says so in its own (visible) chat — the user keeps watching one chat and one file,
-    regardless of seat count.
+    own chat". The watcher answers from the task contract or puts the item on the pending list in
+    its own (visible) chat — the user keeps watching one chat, regardless of seat count.
   - **Monitor event-driven, not by polling.** The watcher acts only on signals: the startup
     handshake (seat must appear in ListAgents and answer an identification message within a
     deadline — if not, look at its screen: `tmux capture-pane` for tmux seats, the pty output

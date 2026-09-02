@@ -82,12 +82,11 @@ with your approval, per run — sessions the watcher launches under tmux or `scr
 retires when the work is done.
 
 What changes for you is where your attention goes. You watch the watcher chat only. Questions
-and reports from every implementer funnel into it; items that need your decision are collected in
-a file instead of interrupting you one by one, and you answer in a second one — `PENDING.md` and
-`ANSWERS.md` under `_ai/tasks/<slug>/` — so nothing scrolls out of reach before you get to it.
-The watcher also handles the mechanics: a startup handshake for each session, stall detection and
-recovery when one goes quiet, and cleanup afterwards (retiring a session still requires your
-instruction — it may hold uncommitted work).
+and reports from every implementer funnel into it; items that need your decision accumulate as a
+pending list instead of interrupting you one by one. The watcher also handles the mechanics:
+a startup handshake for each session, stall detection and recovery when one goes quiet, and
+cleanup afterwards (retiring a session still requires your instruction — it may hold
+uncommitted work).
 
 ```mermaid
 flowchart TB
@@ -99,7 +98,7 @@ flowchart TB
     end
     subgraph multi["Multi-implementer run — you watch one chat"]
         direction LR
-        U2([You]) --- W2["Watcher chat<br/>(questions collect here;<br/>decisions go to a file)"]
+        U2([You]) --- W2["Watcher chat<br/>(questions collect here<br/>as a pending list)"]
         W2 <-->|"brief · report"| A["Implementer A"]
         W2 <-->|"brief · report"| B["Implementer B"]
         W2 <-->|"launch · recover · retire"| C["Implementer C<br/>(tmux / script pty)"]
@@ -162,8 +161,8 @@ pair-watch takes the channel and adds the missing protocol:
   review-gate reviewer, who is given a fresh context and never shown the implementer's
   conversation.
 - **Automated seating.** One command determines roles, finds the peer, and delivers the briefs.
-- **One place for decisions.** Anything that needs a human is collected in one file, and you
-  answer in another, however many implementers are running.
+- **One place for decisions.** Anything that needs a human lands in the watcher chat as a
+  pending list, however many implementers are running.
 - **Seats beyond Claude.** Codex cannot join cross-session messaging, so a sequenced file
   transport carries the same roles and duties.
 - **Multi-implementer operation.** Scope partitioning, launching sessions with your approval,
@@ -222,11 +221,9 @@ Auditing is the point of the watcher role, so be aware of what it touches:
 - During discovery, the invoked side (either role) may read up to two fresh session logs in the
   same project to identify the peer from its latest user message, before messaging it. It quotes
   file paths, never log content, to candidates.
-- One of the two sessions writes coordination files inside the repository, all under
-  `_ai/tasks/<slug>/` in the main checkout: the task contract (`TASK.md`), the watcher's list of
-  decisions waiting on you (`PENDING.md`) and your answers to them (`ANSWERS.md`), and, with a
-  Codex peer, `pair-inbox.md` / `pair-outbox.md`. Keep `_ai/` out of version control
-  (`.gitignore`).
+- One of the two sessions writes coordination files inside the repository: the task contract
+  (`_ai/tasks/<slug>/TASK.md`) and, with a Codex peer, `pair-inbox.md` / `pair-outbox.md` in the
+  same `_ai/tasks/<slug>/` (main checkout). Keep `_ai/` out of version control (`.gitignore`).
 - For code changes, the pair creates a task branch and a separate git worktree — normally the
   implementer; the watcher does it instead when the Codex sandbox cannot write to `.git`. Work
   never happens on the `main` checkout.
