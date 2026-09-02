@@ -85,8 +85,8 @@ What changes for you is where your attention goes. You watch the watcher chat on
 and reports from every implementer funnel into it; items that need your decision accumulate as a
 pending list instead of interrupting you one by one. The watcher also handles the mechanics:
 a startup handshake for each session, stall detection and recovery when one goes quiet, and
-cleanup afterwards (retiring a session still requires your instruction — it may hold
-uncommitted work).
+cleanup afterwards (a session the watcher launched is retired when its task ends; one you
+opened yourself is retired only on your word).
 
 ```mermaid
 flowchart TB
@@ -227,8 +227,9 @@ Auditing is the point of the watcher role, so be aware of what it touches:
 - When the watcher launches sessions itself, it also writes a small registry outside the
   repository: one file per seat at `~/.local/state/pair-watch/seats/<watcher-id>/<run-id>/`,
   recording the seat's label, project directory, launch route and session id so the watcher can
-  tell its own seats from another run's. The watcher deletes a seat's entry when that seat is
-  closed; entries left by an interrupted run are safe to delete by hand.
+  tell its own seats from another run's. The watcher does not delete a seat's entry when that
+  seat is closed: it marks the entry `retired` and removes the run's entries together at the
+  end of the run; entries left by an interrupted run are safe to delete by hand.
 - For code changes, the pair creates a task branch and a separate git worktree — normally the
   implementer; the watcher does it instead when the Codex sandbox cannot write to `.git`. Work
   never happens on the `main` checkout.
