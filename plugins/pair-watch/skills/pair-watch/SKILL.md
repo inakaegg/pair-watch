@@ -167,6 +167,14 @@ an improvisation, with these adjustments:
   or source file. Each brief states the seat's own scope AND the other seats' scopes with the
   files/branches to avoid. Shared files (a ROADMAP, a settings registry) require a one-line
   check-in with the watcher before any seat edits them.
+- **One seat, one task — no reuse.** A seat is spawned for one task and retired when that task
+  ends. The watcher never hands a finished seat a second, unrelated task, however idle or
+  well-briefed it looks: the seat's context already holds the previous task's history, only the
+  human could compact it, and the next task starts from a worse position than a fresh session
+  (observed live: a reused seat had to be stopped and its work handed over anyway). The rule is
+  fixed so the watcher does not weigh it per case — warm build caches and prior familiarity are
+  not reasons; the one exception is follow-up work on the *same* task (review fixes, a merge
+  conflict on that branch), which stays with its seat. A new task gets a new seat.
 - **Gates run per seat.** Each seat's work passes the same gates as in the two-seat flow; the
   watcher launches every reviewer, but reviewers are separate processes and run in parallel, so
   review throughput is not the limit. There is no fixed seat ceiling. What actually bounds N:
@@ -188,9 +196,7 @@ an improvisation, with these adjustments:
   branch deletions, diff discards, test-expectation changes) and presents it at an agreed
   checkpoint instead of interrupting per item. Watcher context also grows with every seat — long
   runs should compact or checkpoint. Seat context is a budget the agents cannot manage: only the
-  human can compact an interactive session, so assigning a seat successive tasks fills its context
-  with the previous tasks' history. Prefer routing a new, unrelated task to the freshest seat, and
-  tell the user when a seat is worth compacting (or replacing with a fresh session) between tasks.
+  human can compact an interactive session — hence the one-seat-one-task rule above.
   The independence guarantee is per pair (watcher ↔ seat); seats are not independent of each
   other's mistakes when their scopes touch.
 - **Seat identity: every seat is bound to the watcher that spawned it.** Reusing a seat that
@@ -228,9 +234,9 @@ an improvisation, with these adjustments:
     evidence needed to call one abandoned (its pty output file, its checkout) lives in another
     watcher's registry, so the judgement cannot be made from here. List the leftovers to the
     user and leave them running; closing them is the user's call.
-  - At the end of a run the watcher offers to close its own seats and removes their registry
-    entries once closed (the seat-retirement rule below still requires the user's word), so
-    leftovers do not accumulate for the next run.
+  - The watcher retires each of its own seats when that seat's task ends (seat-retirement rule
+    below) and removes the registry entry once the seat is closed, so leftovers do not
+    accumulate for the next run; anything still open at the end of a run is closed then.
 - **Model and effort of the seats.** The default `opus` at `xhigh` applies to the sessions
   pair-watch launches, i.e. implementer seats. The watcher is the chat the user already started,
   so this procedure cannot set its model or effort: `fable` at `low` is a recommendation for
@@ -331,11 +337,16 @@ an improvisation, with these adjustments:
   manageable. In an IDE (VSCode), killing the process ends the session but the tab stays; there
   is no API to close tabs from outside, so a large seat pool accumulates dead tabs the user must
   close by hand. Prefer terminal/tmux for many-seat runs, or keep the pool small in an IDE.
-  **Retiring a seat** (kill without return, including the tab-closing flow above) happens only on
-  the user's explicit instruction — seats hold uncommitted state. One exception for
-  watcher-spawned seats: **stall recovery** — kill + `claude --resume <session-id>` of a seat
-  stuck on an on-screen chooser preserves its context and is the watcher's call, reported to the
-  user afterwards.
+  **Retiring a seat** (kill without return, including the tab-closing flow above): a
+  watcher-spawned seat is retired by the watcher when its task ends — after the seat's final
+  report, with its branch committed or its uncommitted state handed over in the task's `_ai/`
+  record, and never while it still holds unreported work. Nothing is lost by the kill: the seat's
+  session log stays on disk and `claude --resume <session-id>` brings the conversation back with
+  its context when someone later needs to ask that seat something, so keep the session id in the
+  registry entry. Leaving finished seats running instead costs memory per process and clutters
+  the session list once a run reaches tens of seats. A user-opened seat is retired only on the
+  user's word. Stall recovery of a spawned seat (kill + `claude --resume <session-id>` of a seat
+  stuck on an on-screen chooser) is likewise the watcher's call, reported to the user afterwards.
 
 ## Pair-watch or the Workflow tool?
 
