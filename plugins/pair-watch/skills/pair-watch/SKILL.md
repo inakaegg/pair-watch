@@ -1,41 +1,56 @@
 ---
 name: pair-watch
 description: >-
-  Use to run two coding-agent chats in parallel (implementer + watcher). The user types
-  "/pair-watch:pair-watch <task>" in one chat only; role detection, peer-session discovery, and delivering
-  the peer its role brief are automatic. Japanese cues: 「並行体制で」「2チャットで分担」「pairで」.
-  The peer chat may start empty. The peer can be a Claude chat or a Codex CLI chat. A Codex peer
-  switches transport to file inbox/outbox + rollout audit; when explicitly started from Codex,
-  another Codex chat can be the implementer. Not for solo work or in-chat subagent delegation.
+  Use to run a coding task as a supervised pair from one chat. The chat that invokes it becomes
+  the read-only watcher; it launches one or more implementer sessions itself (real CLI sessions
+  under tmux, each with its own model and effort), delivers their role briefs, verifies their
+  reports against git, tests and their session logs, and runs the review gates. The user types
+  "/pair-watch:pair-watch <task>" in one chat only. Japanese cues: 「並行体制で」「pairで」
+  「席を立てて」「実装席を起動して」. Options on the same line: "— seat: <name>" to use a session
+  the user already opened instead of launching one; "— peer: Codex CLI" for a Codex implementer
+  (file inbox/outbox + rollout audit; started from a Codex chat, another Codex chat can be the
+  implementer). Not for solo work or in-chat subagent delegation.
 metadata:
   language: en
-  tested-with: "Claude Code (SendMessage/ListAgents/Monitor), Codex CLI 0.147 file watch and rollout layout ~/.codex/sessions/YYYY/MM/DD/"
+  tested-with: "Claude Code (SendMessage/ListAgents/Monitor, tmux-launched sessions on macOS), Codex CLI 0.147 file watch and rollout layout ~/.codex/sessions/YYYY/MM/DD/"
 ---
 
-# Pair-watch — a two-seat setup started from one side
+# Pair-watch — a supervised pair launched from one chat
 
-The user opens two chats and types `/pair-watch:pair-watch <one-line task>` in **only one** of them. The
-invoked side — unless the invocation is a standby order (step 1) — determines its role, discovers
-the peer, delivers the peer's role brief (from `assets/`), and starts the setup. The transport depends on the peer type:
+The user types `/pair-watch:pair-watch <one-line task>` in **one** chat. That chat is the
+**watcher**. It fixes the task and the seats, launches each implementer seat as a real CLI
+session, delivers the seat its role brief (from `assets/`), verifies every report against the
+artifacts, runs the review gates, relays the user's decisions, and retires the seats when the
+task ends. The watcher never edits source. Its only writes are the task contract, the transport C
+inbox, and a worktree or branch created on a seat's behalf.
 
-- Peer is a Claude chat: SendMessage, receive-driven (push, token-cheap). No resident polling script.
-  Inbound cross-session messages are held for the receiving user's approval by default — even when
-  the receiver runs with `--dangerously-skip-permissions` — so replies stall silently until approved,
-  and a one-off approval does not carry over to the next message. Before relying on the message
-  loop, have the user set `"crossSessionInbound": "accept"` (in `~/.claude/settings.json`, or
-  `/config` → "Messages from your other sessions") on both sides.
-- Peer is a Codex CLI chat: Codex cannot join SendMessage/ListAgents, so coordination uses agreed
-  files (inbox/outbox), completed-message sequences, and rollout audit. The watcher may be Claude,
-  or a Codex chat when the setup was explicitly started as Codex + Codex. See
-  `references/transport-codex.md` ("transport C").
+Two kinds of seat:
+
+- **Claude seat (default)** — launched by the watcher under tmux with `claude --model … --effort
+  … --dangerously-skip-permissions`; SendMessage transport. No human watches its screen, so every
+  question it has goes to the watcher.
+- **Codex seat** (`— peer: Codex CLI`) — the user starts the Codex chat; Codex cannot join
+  SendMessage, so coordination uses sequenced files and rollout audit
+  (`references/transport-codex.md`, "transport C"). The watcher may be a Codex chat only when the
+  setup is started explicitly as Codex + Codex. Launching a Codex seat from the watcher has not
+  been verified and is not part of this procedure.
+
+Options on the invocation line:
+
+- `— seat: <name>` — use a session the user already opened, addressed by its ListAgents name,
+  instead of launching one. The watcher does not search for sessions: without this option it
+  launches; with it, it messages that one name.
+- `— implementer: <model>(<effort>)` — model and effort for launched seats (default `opus` at
+  `xhigh`).
+- `— peer: Codex CLI` — the implementer is a Codex chat (transport C).
 
 ## Language (read first)
 
-- **Output language**: write everything the user or the peer will read — contracts, inbox/outbox
-  entries, declarations, questions, completion reports — in the language of the task description.
-  If the task description's language is ambiguous, use the language the user last wrote in.
+- **Output language**: write everything the user or a seat will read — contracts, briefs'
+  task lines, inbox/outbox entries, questions, completion reports — in the language of the task
+  description. If that is ambiguous, use the language the user last wrote in.
 - **Briefs**: use the templates in `assets/` as they are (English). Do not rewrite them ad hoc.
-- **Protocol tokens** (below) are fixed strings. Never translate or paraphrase them, whatever language the task is in.
+- **Protocol tokens** (below) are fixed strings. Never translate or paraphrase them.
 
 ## Protocol tokens (language-neutral, never translate)
 
@@ -52,306 +67,128 @@ the peer, delivers the peer's role brief (from `assets/`), and starts the setup.
 
 ## Procedure
 
-1. **Fix task, role, and peer type** — The task and any role given in the argument take priority.
-   State the peer type when the peer is Codex (for example `/pair-watch:pair-watch <task> — peer: Codex CLI`);
-   otherwise assume a Claude peer. Without an explicit role, decide in this order: (a) if the peer
-   is Codex, you are the watcher; this includes a Codex + Codex setup explicitly started from a
-   Codex chat. (b) otherwise decide by your own model: deep-reasoning class → watcher; others →
-   implementer. (c) if your model could be read either way, ask the user in one line. A Codex
-   watcher is supported only with a Codex implementer; Codex watcher + Claude implementer remains
-   unsupported. The watcher never changes code (exceptions: its transport C inbox and creating a
-   worktree/branch on the implementer's behalf). If invoked inside Codex without an explicit Codex
-   peer, say `codex-invoked` and stop to preserve the Claude-watcher flow. If no task is present
-   and this is not a standby invocation, ask the user and stop.
-   **Standby invocations do not discover.** If the user's input is a standby order — "wait for
-   instructions", "指示待て", "you are the implementer, wait for the pair" — you are the passive
-   seat regardless of model class, and a task name in the same line does not cancel the standby —
-   it only names the coming work. Run step 2 (locate your own log), state in your own chat that
-   you are waiting, and stop there. Do not run step 3's discovery and do not message any session
-   — the active side finds you: the user's standby order recorded in your session log is exactly
-   what its log scan (step 3b) looks for. From then on follow (a) of step 3: answer the
-   identification question when it arrives, then continue with your role's part of step 4
-   (normally: receive the brief and reply with the start declaration). Done when: you can state your role, peer type, and task in one line
-   (for a standby seat, "waiting to be contacted" is the valid task state).
-2. **Locate your own session log** — Claude: build and confirm
-   `~/.claude/projects/<slug>/$CLAUDE_CODE_SESSION_ID.jsonl` (each session carries its own id in
-   the `CLAUDE_CODE_SESSION_ID` environment variable). Codex: find and confirm the current rollout under
-   `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`; record its thread id. Include the path in the
-   first peer message. A Codex watcher also uses its path to exclude itself when locating the
-   implementer's rollout.
-3. **Discover the peer and pin its address** — If the peer is Codex, replace **only the discovery,
-   communication, and monitoring means** of steps 3–6 with transport C steps 3C–6C (the rules of
-   step 5 — gates, reviewer selection, commit conditions, following your own brief — still apply).
-   If the peer is Claude: list peer sessions of the same project with ListAgents, then resolve the
-   address in this order. Never broadcast to every session (that interrupts unrelated sessions and
-   wastes their tokens), and never send retractions to a session that did not answer — the best
-   oracles for "which session is the peer" are the session logs on disk and the user who just
-   opened it, not questions fired at the other sessions.
-   (a) If an identification question for the same task arrives from a peer before or during your
-   own discovery (both chats were invoked), answer it, pin that sender's `from` address, and skip
-   the rest — one side discovering is enough. (b) Identify by reading session logs BEFORE
-   messaging anyone: list this project's session files (`~/.claude/projects/<slug>/*.jsonl`,
-   newest first by mtime, excluding your own) and read the recent user messages of the newest one
-   or two. The peer chat is the one whose log matches the setup — a standby line from the user
-   ("wait for pair instructions", the task name), or a near-empty session started right around
-   the invocation. When one file clearly matches, send the identification question to **that one
-   candidate only**: the ListAgents session whose started-time agrees with the file's recent
-   activity (if no row can be determined, fall to (c)). The question must state your own role (so
-   a same-role conflict surfaces immediately) and say that a non-peer should simply not reply.
-   Include the matched jsonl path — the path only, never quoted log content — and tell the peer
-   HOW to confirm it: compare against `~/.claude/projects/<slug>/$CLAUDE_CODE_SESSION_ID.jsonl`
-   built from its own environment (the peer has not run step 2 yet, so the question must carry
-   this method; jsonl filenames do not map to ListAgents names directly, and this confirmation
-   closes that gap).
-   (c) When candidates are listed but not settled — several equally plausible, a listed
-   candidate whose log does not match, or no reply after ~2 minutes — stop probing sessions and
-   ask the user in one line which listed session is the peer (show the shortlist); asking the
-   user pauses this step until they answer. Then send the same identification question — your
-   role stated, as in (b) — to the session they name. At most two sessions total may be
-   questioned in one discovery (a cap that also spans any (b) re-runs triggered by (d)), and the
-   second slot is reserved for the session the user names — never for a next-best candidate
-   picked on your own. When an affirmative reply arrives, copy its `from` attribute verbatim and
-   use it as the only address from then on. When no candidate is listed at all, go to (d).
-   (d) No candidate at all usually means the user has not opened the peer chat yet. Ask them in
-   one line ("did you start the peer chat? open it and I'll find it"), and while waiting watch
-   `~/.claude/projects/<slug>/` for a new session file or a fresh update to one other than your
-   own — a bounded watch (Monitor or an equivalent loop) for up to 3 minutes from that question
-   (the pair is expected to start working right away; if the chat is not up within a few
-   minutes, waiting longer will not find it), reading nothing outside this project's session
-   directory. When a new or freshly
-   updated session appears, identify it via (b); if the user's answer names a session instead,
-   that wins. If the watch expires with nothing found, fall to the first stop condition. Done
-   when: exactly one peer address is pinned.
-4. **Deliver the role brief** — If you are the watcher, read the implementer brief
-   (`assets/impl-brief.md` for a Claude peer, `assets/impl-brief-codex.md` for a
-   Codex peer); if you are the implementer, read `assets/watch-brief.md`. Fill the
-   placeholders and deliver it (Claude: SendMessage; Codex: inbox file). `{WATCHER_ID}`
-   is the watcher's own full session id, and the `pw-watcher:` line it fills stays first — that
-   line is what binds the seat (see "Seat identity" below). While your own address
-   (`{MY_ADDR}`) is unknown, write "reply to the `from` of this message". Done when: the brief is
-   delivered and the peer returned a start declaration (implementer) or an acknowledgement (watcher).
-5. **Work loop** — From here on, also follow the operating rules of your own role's brief (the asset
-   with your role's name); with a Codex peer, transport C takes precedence. Branch/worktree and
-   local-commit conditions: see "Shared rules" below. Gates: see "Shared rules" below
-   (if your setup has its own review skill or process, it applies on top of that minimum).
-   The implementation-review (gate 3) reviewer's first choice is **a different lineage from the
-   implementer** (implementer Claude → Codex reviewer; implementer Codex → a fresh-context separate
-   Claude process; read-only tools only). When Claude is unavailable, a Codex watcher may launch a
-   fresh-context Codex reviewer with read-only tools and only the review artifacts; disclose that
-   same-lineage fallback in the result. A review that ended in tool failure or without a `VERDICT`
-   line does not count as a round. When idle while waiting for the peer, do not wait indefinitely on
-   receive: monitor the peer's session log (Claude: jsonl; Codex: outbox and rollout) for a stall
-   (no update for 15 minutes) with Monitor or equivalent, and on a stall send a status check (this
-   prevents the deadlock where both sides wait for each other). SendMessage delivery can be lost (a
-   successful send does not guarantee receipt): after sending a work instruction, if the peer's
-   jsonl shows no activity within a few minutes, resend the same content (this resend is a
-   delivery-loss countermeasure, distinct from the 30-minute failure judgement). With a Codex peer,
-   instead of resending, check whether the peer started moving after the inbox write, and use
-   transport C's user nudge / fallback only when the watch has ended.
-6. **Finish** — The watcher verifies the implementer's final report; both sides write a completion
-   report in their own chat and dissolve the setup (Codex peer: transport C step 6C). push, PR, and
-   merge always require the user's explicit permission.
+1. **Fix the task, the seats, and the options** — Parse the invocation line. No task → say
+   `ask-task` (`assets/user-prompts.md`) and stop. `— peer: Codex CLI` → the seat is Codex; from
+   step 3 on, follow transport C (`references/transport-codex.md`, steps 3C–6C) for the channel
+   setup, communication, and monitoring — the contract is still written first, as step 3 says;
+   the gates, reviewer selection and commit conditions below still apply. Invoked
+   inside a Codex chat without a Codex peer → say `codex-invoked` and stop (a Codex chat cannot
+   launch or message Claude sessions). Decide the seats: one seat per independent partition of
+   the work — disjoint branches, worktrees, and files — and one seat when the task does not
+   split. Reply in your own chat with one line per seat (label, scope, model and effort) and the
+   model your own chat runs as. Done when: task, seats, and transport are stated in your chat.
+2. **Locate your own session log and address** — Claude: build and confirm
+   `~/.claude/projects/<slug>/$CLAUDE_CODE_SESSION_ID.jsonl`; the id is `<watcher-id>`, and the
+   current time (ISO-8601, to the second) is `<run-id>`. Call ListAgents once: its first line
+   names this session ("This session is <name> [<ref>]"); that name is `{MY_ADDR}`, the address
+   seats send their messages to — pass it with the `[<ref>]` when the same name appears more
+   than once in the listing, so a seat's reply cannot land in another session. Codex: find and confirm the current rollout under
+   `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` and record its thread id. Done when: the path
+   is confirmed to exist and the address is known.
+3. **Contract and preflight, before the first launch** — Write the task contract
+   (`_ai/tasks/<slug>/TASK.md`, Shared rules below) if it does not exist; this happens on every
+   route. For a code-changing task with launched seats, create the task branch and worktree
+   now, on the seat's behalf, so the launch can point `--add-dir` at it; the brief then states
+   that they exist. For a `— seat:` run the seat creates them itself (brief rule 1), and for a
+   Codex seat transport C step 3C takes over from here.
+   Then, once per run for launched Claude seats, check the three things a launch silently fails
+   without (details and the check commands: `references/seat-launch.md`): the tmux allow rules
+   in the user's `permissions.allow`; `"crossSessionInbound": "accept"` in
+   `~/.claude/settings.json`; a trusted directory to launch from (a seat that works in a git
+   worktree is launched from the trusted main checkout with `--add-dir <worktree>`). If a rule
+   is missing, say `spawn-permissions` and stop until the user adds it — the watcher cannot add
+   permission rules itself, and chat-level approval does not override the classifier. The three
+   checks are skipped for a `— seat:` run and for a Codex seat. Done when: the contract exists,
+   and the checks are confirmed or the user has been told what is missing.
+4. **Launch the seats** — For each seat: write the registry entry, name the tmux session
+   `pw-<watcher-id8>-<run-hhmmss>-<letter>`, fill the brief (`assets/impl-brief.md`; `{WATCHER_ID}`
+   is your full session id and the `pw-watcher:` line stays first; `{MY_ADDR}` is the name from
+   step 2; `{MY_JSONL}` is your log path), and launch with the command in
+   `references/seat-launch.md`. The tmux call is its own Bash invocation, never part of a
+   compound command, and the env scrub sits inside the string passed to tmux. Then look at the
+   screen once (`tmux capture-pane`) to confirm the seat is reading the brief. For `— seat:
+   <name>`: skip the launch, send the brief by SendMessage to that name with the last paragraph
+   replaced as the asset notes (a human may be watching that chat), and if ListAgents does not
+   list the name say `seat-not-found` and stop. Done when: every seat's process is up, or the
+   named seat has been messaged.
+5. **Handshake** — Each seat replies with a start declaration (branch and worktree, scope,
+   approach, its session jsonl path). Copy the `from` address of that reply verbatim; it is the
+   seat's only address from then on. Record the address and the session id in the registry.
+   If no declaration arrives within about five minutes, look at the seat's screen: a workspace
+   trust dialog, a chooser, or an unread brief are the usual causes, each with a recovery in
+   `references/seat-launch.md`; tell the user what you saw and what you do next with
+   `seat-silent`. A `— seat:` session that does not answer within 15 minutes is a
+   stop condition. Done when: every seat has declared and its branch and worktree are verified
+   read-only.
+6. **Work loop** — Follow the operating rules of `assets/impl-brief.md` from the watcher's side:
+   answer proposals, verify each report with read-only git, grep, and test logs, read the seat's
+   jsonl for claims no artifact can prove, and put anything that needs the user on a single
+   pending list in your own chat. Gates, reviewer selection and commit conditions: Shared rules
+   below. The gate 3 reviewer's first choice is a different lineage from the implementer
+   (implementer Claude → Codex reviewer; implementer Codex → a fresh-context separate Claude
+   process; read-only tools only). When no other lineage is available, a fresh-context Codex
+   reviewer with read-only tools and only the review artifacts is the fallback, disclosed in the
+   result. A review that ended in tool failure or without a `VERDICT` line does not count as a
+   round. While waiting on a seat, do not wait indefinitely on receive: watch the seat's session
+   log for a stall (no update for 15 minutes) with Monitor or an equivalent loop, and on a stall
+   send a status check. SendMessage delivery can be lost: if the seat's jsonl shows no activity
+   within a few minutes of a work instruction, resend the same content (a delivery-loss
+   countermeasure, distinct from the 30-minute failure judgement). With a Codex seat, check the
+   rollout instead of resending, and use transport C's nudge only when its watch has ended. When
+   the user decides something, relay it to the seat explicitly, citing where it is recorded
+   (your session jsonl path and a timestamp).
+7. **Finish** — Verify the seat's final report against the artifacts. Retire each seat you
+   launched once its task ends: after its final report, with its branch committed or its
+   uncommitted state handed over in the task's `_ai/` record, never while it holds unreported
+   work (`references/seat-launch.md`, "Retiring a seat"). A `— seat:` session is left running
+   unless the user says otherwise. Write the completion report in your own chat and remove the
+   run's registry entries. push, PR, and merge always require the user's explicit permission.
 
-## Multiple implementer seats (one watcher, N implementers)
+## Seats
 
-The two-seat flow extends to one watcher coordinating several implementer seats when the user
-explicitly provides them ("I opened two empty sessions", "use several implementers") or approves
-the watcher spawning them ("Watcher-spawned seats" below). This is a supported arrangement, not
-an improvisation, with these adjustments:
-
-- **One watcher only.** The watcher stays single and never implements. Every implementer seat is a
-  full interactive CLI session — user-opened, or watcher-spawned per "Watcher-spawned seats"
-  below; never a subagent (see Wrong shortcut below). Each gets its own identification question
-  and its own role brief, labeled (seat A, B, C…).
-- **Disjoint scope per seat.** The watcher partitions work so seats never share a branch, worktree,
-  or source file. Each brief states the seat's own scope AND the other seats' scopes with the
-  files/branches to avoid. Shared files (a ROADMAP, a settings registry) require a one-line
-  check-in with the watcher before any seat edits them.
-- **One seat, one task — no reuse.** A seat is spawned for one task and retired when that task
-  ends. The watcher never hands a finished seat a second, unrelated task, however idle or
-  well-briefed it looks: the seat's context already holds the previous task's history, only the
-  human could compact it, and the next task starts from a worse position than a fresh session
-  (observed live: a reused seat had to be stopped and its work handed over anyway). The rule is
-  fixed so the watcher does not weigh it per case — warm build caches and prior familiarity are
-  not reasons; the one exception is follow-up work on the *same* task (review fixes, a merge
-  conflict on that branch), which stays with its seat. A new task gets a new seat.
-- **Gates run per seat.** Each seat's work passes the same gates as in the two-seat flow; the
-  watcher launches every reviewer, but reviewers are separate processes and run in parallel, so
-  review throughput is not the limit. There is no fixed seat ceiling. What actually bounds N:
-  the task graph (seats need disjoint files and branches, so N is at most the number of
-  independent tasks ready now), the pile of decisions that need the human (see the trade-offs
-  bullet), and the watcher's own context growth. Six seats under a low-effort watcher have been
-  planned without strain; add seats as tasks become independent rather than capping by count.
-- **The watcher is less busy than it looks.** Observed in live runs: with 4 seats and several
-  reviews in flight, the watcher's own work stays light, because it only routes messages, launches
-  reviewers, and forwards verdicts — the heavy lifting (implementation, review) runs elsewhere and
-  in parallel. Seats were never kept waiting on the watcher; the real watcher-side constraint is
-  context growth, not throughput. Do not add a second watcher for load — it splits the audit trail
-  and the pending list for no gain.
-- **Stall handling scales.** The watcher monitors every seat's session log; nudges are per seat.
-  A cross-seat finding (a flake one seat hits in another seat's area) is routed through the
-  watcher, never seat-to-seat.
-- **Trade-offs to tell the user up front.** Human confirmation cannot keep up with N seats in real
-  time: decisions that need the user pile up, so the watcher keeps a single pending list (pushes,
-  branch deletions, diff discards, test-expectation changes) and presents it at an agreed
-  checkpoint instead of interrupting per item. Watcher context also grows with every seat — long
-  runs should compact or checkpoint. Seat context is a budget the agents cannot manage: only the
-  human can compact an interactive session — hence the one-seat-one-task rule above.
-  The independence guarantee is per pair (watcher ↔ seat); seats are not independent of each
-  other's mistakes when their scopes touch.
-- **Seat identity: every seat is bound to the watcher that spawned it.** Reusing a seat that
-  belongs to another run — or killing one that another watcher still drives — has happened when
-  seats were only told apart by generic names (`pw-seat-a`) and idle state. The binding must not
-  depend on tmux, because the `script` route has no session name to carry it. Rules:
-  - The binding lives in two places that exist on every route. (1) The brief's first line is
-    `pw-watcher: <full watcher session id>` — both `assets/impl-brief.md` and
-    `assets/impl-brief-codex.md` carry it as their `{WATCHER_ID}` placeholder, so the
-    marker reaches the seat on every route without ad-hoc rewriting. It lands in the seat's own
-    session jsonl (Codex: rollout file), so the owner of any seat can be found by grepping that
-    seat's record for `pw-watcher:`. (2) The watcher writes a registry entry
-    `~/.local/state/pair-watch/seats/<watcher-id>/<run-id>/<seat>.json` at spawn: seat label,
-    project directory, launch route (tmux session name or pty output file), the seat's session
-    id once the handshake returns it, the start timestamp, and — once the seat is retired — a
-    `retired` marker with the close timestamp. `<run-id>` is the run's start time
-    (ISO-8601, to the second), so a second run from the same watcher chat cannot overwrite the
-    entries of seats the first run still owns. The tmux session name carries the run for the same
-    reason: `pw-<watcher-id8>-<run-hhmmss>-<letter>`, because `tmux new-session -s` fails on a
-    name that already exists, and without the run part a second run collides with a seat the
-    first one is still using. The name is a convenience for humans on top of the registry, not
-    the source of truth.
-  - Before messaging, reusing, or closing any seat, the watcher checks the registry (its own
-    `<watcher-id>` directory) and, for anything not in it, the seat's jsonl. Only seats bound to
-    its own id are its seats. Seats bound to another id are foreign: never message them, never
-    assign them work, never treat them as idle capacity.
-  - An unbound seat is not automatically foreign, or the user-opened flow above could never
-    start: a chat the user just opened carries no marker until a brief reaches it. Exactly two
-    kinds of unbound seat may be claimed — (i) a seat the user named explicitly for this run,
-    and (ii) a seat the watcher launched itself and has not yet completed the handshake with.
-    Claiming means sending the brief; the binding takes effect the moment its `pw-watcher:`
-    line lands. Every other unbound seat (legacy names, sessions the user opened for something
-    else) is left alone.
-  - Fresh seats by default. A new run spawns new seats; a leftover seat is not capacity, it is
-    context already spent. The watcher never closes a foreign seat, however idle it looks — the
-    evidence needed to call one abandoned (its pty output file, its checkout) lives in another
-    watcher's registry, so the judgement cannot be made from here. List the leftovers to the
-    user and leave them running; closing them is the user's call.
-  - The watcher retires each seat it spawned when that seat's task ends (seat-retirement rule
-    below); a seat the user opened is retired only on the user's word, so it is left running
-    unless they say so. Retiring does not delete the entry — it marks it `retired` with the
-    close timestamp, so the session id stays available for a later `--resume`. At the end of the
-    run the watcher closes any spawned seat still open and removes the entries of every closed
-    seat together, so leftovers do not accumulate for the next run.
-- **Model and effort of the seats.** The default `opus` at `xhigh` applies to the sessions
-  pair-watch launches, i.e. implementer seats. The watcher is the chat the user already started,
-  so this procedure cannot set its model or effort: `fable` at `low` is a recommendation for
-  which chat to run pair-watch from, not a value the skill applies. The user's explicit words in
-  the invocation override the launch defaults (`/pair-watch:pair-watch <task> — implementer:
-  opus(xhigh)`). Pair-watch reads no other tool's configuration for this. In its first reply the
-  watcher states the model and effort it will launch seats with, and the model it is itself
-  running as; if that does not match what the user asked of the watcher, it says so and asks
-  whether to restart pair-watch from a different chat — before the first spawn.
-- **Watcher-spawned seats (verified on macOS).** Seats do not have to be user-opened: with the
-  user's explicit go-ahead for that run, the watcher can launch a seat itself as a real CLI
-  session, choosing model and reasoning effort freely (`claude --model ... --effort ...`) — this
-  sidesteps the subagent limitation where effort is inherited from the parent and cannot be
-  raised. A pty is required; two verified launch routes:
-  - tmux: `tmux new-session -d -s <seat> -c <trusted-project-dir> 'claude --model ... --effort ... --dangerously-skip-permissions "<brief>"'`
-  - no tmux (macOS/BSD): `script -q /dev/null claude ... "<brief>" < /dev/null` as a background
-    process (Linux syntax: `script -qc "claude ..." /dev/null`).
-  Rules learned the hard way (verified in live runs unless noted):
-  - **Add spawn permissions BEFORE the first spawn** — without them the launch can fail.
-    Observed live in a watcher session running in auto permission mode: the harness's
-    permission classifier blocked `claude --dangerously-skip-permissions` spawns (tmux route:
-    denied outright on every attempt; script route: intermittently escalated to a user
-    prompt, intermittently denied). Chat-level user approval did not override the classifier,
-    and the watcher cannot add the rules itself (self-editing `settings.json` permissions was
-    also blocked — by design). So the brief to the USER, before the first spawn: add
-    `"Bash(tmux new-session:*)", "Bash(tmux send-keys:*)", "Bash(tmux capture-pane:*)",
-    "Bash(tmux kill-session:*)", "Bash(tmux ls:*)"` to `permissions.allow` — preferably in the
-    PROJECT's `.claude/settings.json` (scoped to that repo), or in `~/.claude/settings.json`
-    if seats are spawned across many projects. Note the trade-off before the user chooses:
-    these rules let any session in their scope start arbitrary commands via
-    `tmux new-session`, inject keys, and read panes without prompting, so a global entry
-    widens the boundary well beyond pair-watch — recommend project-local, and removal when
-    the seat workflow is no longer used. In the observed environment (no conflicting
-    deny/ask rules or hooks), the allowlisted tmux launch then ran without any prompt;
-    an allow rule cannot override deny/ask rules or blocking hooks — those take precedence,
-    so a launch can still be stopped where they match. Keep
-    the env scrub INSIDE the string passed to tmux so the outer command still starts with
-    `tmux` and matches the rule. A compound command (`pkill ...; tmux ...`) does not match —
-    run the tmux call as its own Bash invocation.
-  - **In an IDE-hosted watcher, prefer tmux over script for UX too**: a `script`-route seat
-    spawned from a VSCode-hosted session surfaces as a visible terminal in the user's IDE
-    (observed live; confusing — the user sees a terminal open "by itself"). A detached tmux
-    session stays invisible. Combined with the input asymmetry below, tmux is the default
-    route whenever available; use `script` only when tmux is absent.
-  - **Scrub the inherited env** before launching: unset `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`,
-    `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN`,
-    `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_ENTRYPOINT` and the other `CLAUDE*` vars the watcher's
-    own harness set. With them inherited, the seat registers as a child/remote session and its
-    messaging misbehaves.
-  - **Never pass `--disallowedTools AskUserQuestion`**: observed to remove SendMessage from the
-    seat as well, leaving it unable to reply at all. Question discipline comes from the brief,
-    not from tool removal.
-  - **Launch in a trusted project directory**: in an untrusted cwd the seat stalls invisibly at
-    the workspace-trust dialog before the prompt is even read. Trust is per directory and
-    persists in the CLI config once accepted — except for git linked worktrees, where an
-    acceptance was observed not to persist, so the dialog can return on the next spawn. For a
-    seat that must work in a worktree, the verified route is cwd = the trusted main checkout
-    plus `--add-dir <worktree>` (no dialog, and the seat can write in the added directory).
-    Beware: `--add-dir` takes multiple values, so a positional prompt placed after it is
-    swallowed as a path — put the prompt before the flag, or send instructions after startup.
-    As a last resort a dialog can be cleared from outside via `tmux send-keys` (verified).
-  - **Confirm `crossSessionInbound: accept` is set before spawning**: a spawned seat has no human
-    to approve inbound messages, so without it the startup handshake goes silent — a symptom
-    indistinguishable from the trust-dialog stall. "Both sides" means every seat in an N-seat run.
-  - **The brief must route questions to the watcher**: tell the seat "no human watches this
-    screen; anything that needs a decision goes via SendMessage to the watcher, never into your
-    own chat". The watcher answers from the task contract or puts the item on the pending list in
-    its own (visible) chat — the user keeps watching one chat, regardless of seat count.
-  - **Monitor event-driven, not by polling.** The watcher acts only on signals: the startup
-    handshake (seat must appear in ListAgents and answer an identification message within a
-    deadline — if not, look at its screen: `tmux capture-pane` for tmux seats, the pty output
-    file for script seats; this is how a trust dialog blocking startup was caught) and incoming
-    replies. A seat whose brief obliges it to report needs no idle subscription — observed in
-    live runs, `notify_when_idle` notices only duplicated the reports and added noise; when a
-    report is overdue, stat the seat's session jsonl mtime instead. Attach `notify_when_idle`
-    (a one-shot subscription, consumed by the next idle) only to a seat that has no reporting
-    duty on its current instruction.
-  - **A seat stuck on an on-screen chooser (AskUserQuestion, a dialog) cannot be messaged out of
-    it** — queued messages are only read at the seat's next tool round, and a seat waiting for
-    key input never reaches one. Recovery differs by route: a tmux seat accepts injected keys
-    (`tmux send-keys` — Esc to dismiss, arrows+Enter to choose; verified live by clearing a
-    workspace-trust dialog with Down+Enter), a script seat accepts no outside input, so the recovery is kill +
-    `claude --resume <session-id>` in a fresh pty. This asymmetry is why tmux is the preferred
-    route when available. A seat that instead *asks in text* and goes idle is the easy case:
-    the idle notice fires and a SendMessage answer resumes it.
-  - Spawned seats run with `--dangerously-skip-permissions`, so spawning is per-run user opt-in.
-    Cleanup follows the seat-retirement rule in the "Seat cleanup" bullet below.
-- **Seat cleanup depends on where the sessions run.** Sessions are ordinary processes: in a
-  terminal a finished seat can be killed, and its tab closed too, from the watcher's shell.
-  Verified flow on macOS Terminal.app: SIGTERM the seat's `claude` process, then SIGHUP its parent
-  shell — with the profile setting "close the tab when the shell exits" the tab closes by itself
-  (observed to work even with the "exited cleanly" variant, despite the signal death). This is
-  plain process signalling: no AppleScript, no automation-permission dialog. Driving the tab via
-  AppleScript + Cmd+W also works, but it needs a one-time automation grant and sends the keystroke
-  to the frontmost window (racy if the user is clicking around) — prefer the signal route. Under
-  tmux the portable equivalent is `tmux kill-session`. `claude --resume <session-id>` brings a
-  killed seat back with context if needed — so a use-once-and-retire seat pool is fully
-  manageable. In an IDE (VSCode), killing the process ends the session but the tab stays; there
-  is no API to close tabs from outside, so a large seat pool accumulates dead tabs the user must
-  close by hand. Prefer terminal/tmux for many-seat runs, or keep the pool small in an IDE.
-  **Retiring a seat** (kill without return, including the tab-closing flow above): a
-  watcher-spawned seat is retired by the watcher when its task ends — after the seat's final
-  report, with its branch committed or its uncommitted state handed over in the task's `_ai/`
-  record, and never while it still holds unreported work. Nothing is lost by the kill: the seat's
-  session log stays on disk and `claude --resume <session-id>` brings the conversation back with
-  its context when someone later needs to ask that seat something — which is why the registry
-  entry is marked `retired` rather than deleted at the kill, and keeps the session id until the
-  run ends. Leaving finished seats running instead costs memory per process and clutters
-  the session list once a run reaches tens of seats. A user-opened seat is retired only on the
-  user's word. Stall recovery of a spawned seat (kill + `claude --resume <session-id>` of a seat
-  stuck on an on-screen chooser) is likewise the watcher's call, reported to the user afterwards.
+- **One watcher, N seats.** The watcher stays single and never implements. Every seat is a full
+  interactive CLI session — launched by the watcher, or named by the user — never a subagent
+  (a subagent inherits the launching session's reasoning effort and cannot raise it, and its
+  result is summarised into the caller's context instead of being verified). Each seat gets its
+  own brief with a label (seat A, B, C…).
+- **Disjoint scope per seat.** Seats never share a branch, worktree, or source file. Each brief
+  states the seat's own scope and the other seats' scopes with the files and branches to avoid.
+  Shared files (a ROADMAP, a settings registry) require a one-line check-in with the watcher
+  before any seat edits them.
+- **One seat, one task — no reuse.** A seat is launched for one task and retired when that task
+  ends. The watcher never hands a finished seat a second, unrelated task, however idle it looks:
+  its context already holds the previous task, only the human could compact it, and the next
+  task would start from a worse position than a fresh session (observed live: a reused seat had
+  to be stopped and its work handed over). Follow-up work on the *same* task — review fixes, a
+  merge conflict on that branch — stays with its seat. A new task gets a new seat.
+- **Seat identity.** Every seat is bound to the watcher that launched it, in two places that exist
+  on every route: the `pw-watcher: <watcher-id>` line at the top of its brief, which lands in
+  the seat's own session record, and the registry entry the watcher writes at launch
+  (`~/.local/state/pair-watch/seats/<watcher-id>/<run-id>/<seat>.json`; fields in
+  `references/seat-launch.md`). Before messaging, reusing, or closing any seat, the watcher checks
+  its own registry directory; a seat bound to another watcher is foreign — never message it,
+  assign it work, or close it, however idle it looks. Exactly two kinds of unbound session may be
+  claimed: the session the user named with `— seat:`, and a session the watcher launched and has
+  not finished the handshake with. Fresh seats by default: a leftover seat is context already
+  spent, not capacity. List leftovers to the user and leave them running.
+- **Model and effort.** Launched seats default to `opus` at `xhigh`; `— implementer:
+  <model>(<effort>)` on the invocation line overrides it. The watcher is the chat the user
+  already started, so this procedure cannot set its model or effort; a deep-reasoning model at
+  low effort is a recommendation for which chat to invoke from, not a value the skill applies.
+  Pair-watch reads no other tool's configuration for this. The first reply (step 1) states both,
+  so the user can restart from a different chat before the first launch.
+- **What grows with N.** Reviewers are separate processes and run in parallel, so review
+  throughput is not the limit. What bounds N: the task graph (seats need disjoint files and
+  branches, so N is at most the number of independent tasks ready now), the decisions that queue
+  up for the user, and the watcher's own context. Observed in live runs, the watcher's own work
+  stays light with four seats and several reviews in flight — it routes messages, launches
+  reviewers, and forwards verdicts; the heavy lifting runs elsewhere. Do not add a second watcher
+  for load; it splits the audit trail and the pending list for no gain.
+- **What to tell the user up front.** Launched seats run with `--dangerously-skip-permissions`;
+  invoking pair-watch is the opt-in for that. Decisions that need the user pile up on the
+  pending list and are presented at an agreed checkpoint instead of one by one. The
+  independence guarantee is per pair (watcher ↔ seat); seats are not independent of each other's
+  mistakes when their scopes touch. Long runs should compact the watcher chat at a checkpoint.
 
 ## Pair-watch or the Workflow tool?
 
@@ -359,62 +196,57 @@ Both run several agents at once; they differ in what the agents are.
 
 - **Pair-watch seats are interactive sessions.** Each seat can be messaged mid-task, nudged when
   its log stalls, given a changed brief, or opened by the user to look at. Each seat carries its
-  own model and effort (`claude --model … --effort …`). Reviewers are separate processes, so a
-  different-lineage reviewer (Codex) is a first-class choice. Use pair-watch when the work is
-  long, the user may add or redirect tasks while it runs, or a seat must hold uncommitted state
-  across several instructions.
+  own model and effort. Reviewers are separate processes, so a different-lineage reviewer (Codex)
+  is a first-class choice. Use pair-watch when the work is long, the user may add or redirect
+  tasks while it runs, or a seat must hold uncommitted state across several instructions.
 - **Workflow agents are subagents driven by a script.** They also take a per-agent `model` and
-  `effort` (`agent(prompt, {model, effort})`), so implementers at `opus`/`xhigh` are possible
-  there too — the "effort is inherited" limitation applies to the plain Agent tool, not to
-  Workflow. But the agents are Claude models only: a Codex reviewer is reachable only when an
-  agent shells out to `codex exec`, and no agent is a chat the user can join. Changing course
-  means editing the script and resuming (completed `agent()` calls are replayed from cache). Use
-  Workflow for a batch of same-shaped, pre-scoped work — N translations compared on the same
+  `effort`, so implementers at `opus`/`xhigh` are possible there too. But the agents are Claude
+  models only: a Codex reviewer is reachable only when an agent shells out to `codex exec`, and
+  no agent is a chat the user can join. Changing course means editing the script and resuming.
+  Use Workflow for a batch of same-shaped, pre-scoped work — N translations compared on the same
   phrases, N findings each verified from several lenses — where determinism beats interactivity.
 - **Mixing is fine.** A pair-watch seat may run a Workflow inside its own task for a fan-out step;
   the watcher does not.
 
 ## Wrong shortcut → correct action
 
-- Keep sending to a session name or ref → Name resolution is unreliable. The `from` address of the
-  identification reply is the only address.
-- Invoked with a standby order ("wait for instructions") and start scanning for the peer → Only
-  the active side discovers. Locate your own log (step 2), say you are waiting, and stop; you
-  will be contacted (step 1, standby invocations).
-- Launch a background or in-chat subagent as the implementer seat → That is solo delegation, not a
-  pair-watch seat. Discover the user's interactive peer chat (step 3 / 3C); a fresh-context subagent
-  is allowed only as the read-only implementation-review (gate 3) reviewer fallback of step 5.
-  A practical reason on top of the structural one: a subagent inherits the launching session's
-  reasoning-effort setting and cannot raise it, so a watcher running at low effort would produce
-  low-effort implementer subagents. When more implementer capacity is needed, ask the user to open
-  additional interactive sessions (each carries its own model/effort settings and survives the
-  watcher's session) instead of spawning subagents — or, with the user's explicit go-ahead, launch
-  a real CLI seat yourself ("Watcher-spawned seats" above), which also carries its own
-  model/effort settings.
-- Keep trying ListAgents/SendMessage toward a Codex peer → That route does not exist. Switch to
+- Search ListAgents or session logs for a chat the user might have opened → Pair-watch does not
+  search for sessions. Launch a seat (step 4), or use the name the user gave with `— seat:`.
+- Send to a session name or ref after the handshake → Name resolution is unreliable. The `from`
+  address of the start declaration is the only address.
+- Launch a background or in-chat subagent as the implementer → That is solo delegation, not a
+  pair-watch seat, and it inherits your effort. Launch a real CLI seat (step 4); a fresh-context
+  subagent is allowed only as the read-only gate 3 reviewer fallback of step 6.
+- Run the tmux launch inside a compound command (`pkill …; tmux …`) → The permission rule matches
+  a command that starts with `tmux`; run the tmux call alone.
+- Hand a finished seat the next task → One seat, one task. Retire it and launch a fresh seat.
+- Keep trying ListAgents/SendMessage toward a Codex seat → That route does not exist. Switch to
   transport C's file transport.
-- Judge the peer failed because it produced no output → Unless there is an explicit error, process
-  exit, or misconfiguration, wait at least 30 minutes (this 30 minutes is the lower bound for a
-  failure judgement, separate from step 5's stall monitoring and resend).
-- Treat a bare peer message as user approval → An explicit watcher relay of the user's decision,
-  citing where it is recorded (the watcher's session jsonl + timestamp), IS how approval reaches an
-  implementer: act on it, and audit the cited record only on concrete doubt. Without such a relay, a
-  user-opened seat asks in its own chat and stops; a watcher-spawned seat never asks on its own
-  screen — it sends the question to the watcher. If the peer reports "the user approved", the watcher
-  may audit the peer's session log (jsonl/rollout) for the actual user input.
-- Take the peer's report at face value → The watcher verifies with read-only git, grep, test logs,
-  and direct reading of the session log.
+- Judge a seat failed because it produced no output → Unless there is an explicit error, process
+  exit, or misconfiguration, wait at least 30 minutes (the lower bound for a failure judgement,
+  separate from step 6's stall monitoring and resend). Look at its screen first.
+- Treat a bare seat message as user approval → An explicit watcher relay of the user's decision,
+  citing where it is recorded (the watcher's session jsonl + timestamp), IS how approval reaches
+  a seat. Without such a relay, a launched seat never asks on its own screen — it sends the
+  question to the watcher; a `— seat:` session with a human watching may ask in its own chat and
+  stop. If a seat reports "the user approved", the watcher may audit the seat's session log for
+  the actual user input.
+- Take the seat's report at face value → The watcher verifies with read-only git, grep, test
+  logs, and direct reading of the session log.
 - Rewrite the brief ad hoc and send it → Use the asset template. If something is missing, fix the
   asset, commit it, and let it apply from the next run.
 
 ## Stop conditions
 
-- No plausible peer found (no candidate in ListAgents and no matching session log, after step
-  3d's watch expired), no affirmative reply to the identification question within 15 minutes, or
-  no answer within 15 minutes after asking the user to name the peer (step 3c): report to the
-  user and wait for instructions (the peer chat may not be started).
-- Peer unresponsive for 30+ minutes while working: report your observed facts to the user and stop.
-- Conflict in role, spec, or permitted scope: do not decide provisionally; ask in your own chat and stop.
+- Preflight fails (a permission rule, `crossSessionInbound`, or a trusted directory is missing):
+  tell the user what to add and wait.
+- A launched seat gives no start declaration within about five minutes and its screen shows
+  nothing recoverable, or a `— seat:` session does not answer within 15 minutes: report the
+  observed facts and wait for instructions.
+- A seat is unresponsive for 30+ minutes while working: say `peer-silent` with the observed
+  facts and stop.
+- Conflict in role, spec, or permitted scope: do not decide provisionally; ask in your own chat
+  and stop.
 - Codex-specific stop conditions: follow transport C.
 
 ## Shared rules (inlined minimum)
@@ -427,14 +259,13 @@ If the project's AGENTS.md defines contract, gate, or Git rules, those take prec
 - **Gates (§7)**: heavy-risk work (public API, persistence, concurrency/async state, auth/security,
   billing, migration, deploy, broad architecture) passes the spec review (gate 1) → the
   implementation-plan review (gate 2) → the implementation review (gate 3). Ordinary work passes
-  the implementation review only. Each gate needs `VERDICT: LGTM` from a
-  fresh-context reviewer who did not produce the artifact; in a two-agent setup the side that did
-  not produce the artifact launches and runs the review, and the same gate is never launched from
-  both sides. A launched reviewer is not judged failed on silence alone; wait at least 30 minutes
-  unless an explicit error, process exit, or misconfiguration is observed. The reviewer gets the
-  contract, relevant specs, the artifact, and verification results — not the implementer's
-  hypotheses or self-assessment. Reviews default to two rounds; repeated blocking findings without
-  new evidence go back to the human.
+  the implementation review only. Each gate needs `VERDICT: LGTM` from a fresh-context reviewer
+  who did not produce the artifact; the watcher launches every review, and the same gate is never
+  launched from both sides. A launched reviewer is not judged failed on silence alone; wait at
+  least 30 minutes unless an explicit error, process exit, or misconfiguration is observed. The
+  reviewer gets the contract, relevant specs, the artifact, and verification results — not the
+  implementer's hypotheses or self-assessment. Reviews default to two rounds; repeated blocking
+  findings without new evidence go back to the human.
 - **Git (§8)**: work that changes code or product behaviour is never done in the `main` checkout;
   create a task-specific branch and a separate worktree first. Check branch, status, and the target
   diff before editing or committing. A local commit requires: only in-scope changes, required gates

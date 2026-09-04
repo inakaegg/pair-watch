@@ -1,8 +1,9 @@
 # Transport for a Codex peer — sequenced files + rollout audit
 
-When the peer is an interactive Codex CLI chat, this replaces **only the communication, discovery,
-and monitoring means** of SKILL.md steps 3–6. Gates, reviewer selection, commit conditions, and the
-brief's operating rules still follow SKILL.md step 5. Paths in this file are relative to the skill
+When the implementer seat is an interactive Codex CLI chat, this replaces **only the launch,
+communication, and monitoring means** of SKILL.md steps 3–7 (the user starts the Codex chat; the
+watcher does not launch it). Gates, reviewer selection, commit conditions, and the brief's
+operating rules still follow SKILL.md step 6. Paths in this file are relative to the skill
 root. User-facing sentences are keys into `assets/user-prompts.md`; say them in the user's language.
 
 Codex cannot join SendMessage/ListAgents/Monitor. Transport C therefore uses two files, a completed
@@ -20,7 +21,7 @@ message sequence in each file, and Codex rollouts under
   making Codex the watcher would discard that receive-driven path without enabling Codex + Codex.
 
 In-chat subagent delegation is not a pair-watch seat. A fresh-context Codex subagent or process may
-be used only as the read-only reviewer fallback described in SKILL.md step 5.
+be used only as the read-only reviewer fallback described in SKILL.md step 6.
 
 ## Communication files and message publication
 
@@ -83,7 +84,7 @@ for a total of about 30 minutes.
   with last-seen sequence 0 and does not end its turn. When outbox sequence 1 arrives, read it and
   record the declared implementer rollout path and thread id. If the path is missing, search today's
   and (around midnight) yesterday's rollouts for the inbox path or thread id, **exclude the watcher**
-  rollout already pinned in step 2, and require exactly one result. If it is still ambiguous, stop
+  rollout already pinned in SKILL.md step 2, and require exactly one result. If it is still ambiguous, stop
   and ask the user instead of choosing by modification time.
 
 6C. **Work loop and finish** — Verify each report with read-only checks of the worktree and narrowed
@@ -94,7 +95,7 @@ for a total of about 30 minutes.
   modify inbox merely to record the timeout. To finish, send one sequenced termination instruction.
   If the implementer has reported `WATCH_ENDED role=implementer`, say `codex-nudge`; otherwise its
   active inbox watch receives the termination. Verify the completion report, keep both files as the
-  audit record, then follow SKILL.md step 6.
+  audit record, then follow SKILL.md step 7.
 
 ## Implementer rules
 

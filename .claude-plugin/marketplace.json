@@ -1,6 +1,6 @@
 {
   "name": "pair-watch",
-  "description": "Marketplace for the pair-watch plugin: two-seat coding-agent pairing (implementer + read-only watcher) with session-log auditing.",
+  "description": "Marketplace for the pair-watch plugin: a supervised coding-agent pair launched from one chat (read-only watcher + implementer seats it starts itself) with session-log auditing.",
   "owner": {
     "name": "inakaegg"
   },
@@ -8,7 +8,7 @@
     {
       "name": "pair-watch",
       "source": "./plugins/pair-watch",
-      "description": "Two-seat pair programming for coding agents: implementer + read-only watcher with session-log auditing. Claude peer via SendMessage; Codex peer via sequenced files + rollout audit, including Codex + Codex."
+      "description": "Supervised pair for coding agents started from one chat: the watcher launches implementer seats under tmux, audits their session logs, and runs review gates. Codex seats via sequenced files + rollout audit, including Codex + Codex."
     }
   ]
 }
