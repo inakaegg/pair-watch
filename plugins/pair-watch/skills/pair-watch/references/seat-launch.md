@@ -56,17 +56,52 @@ Three things make a launch fail silently. Check them once per run, before the fi
   "effort": "xhigh",
   "started": "<ISO-8601>",
   "address": null,
+  "socket": null,
   "session_id": null,
   "retired": null
 }
 ```
 
 `address` and `session_id` are filled from the start declaration; `retired` gets the close
-timestamp when the seat is retired. `<run-id>` is the run's start time so a second run from the
+timestamp when the seat is retired. `socket` is the seat's messaging endpoint,
+`uds:/tmp/cc-socks/<pid>.sock`, where `<pid>` is the pane pid of the seat's tmux session
+(`tmux display -p -t <tmux_session> '#{pane_pid}'`; for a seat launched with the command below the
+pane process *is* the seat's claude process — verified on macOS with three seats). Fill it at the
+handshake and re-derive it whenever the watcher reopens: `address` (a display name that ListAgents
+may show for more than one seat) and the `from` value are per-process and per-chat memory, the
+tmux name is not. A `— seat:` session has no tmux name the watcher knows, so its `socket` stays
+null and it keeps being addressed by name + ref. `<run-id>` is the run's start time so a second run from the
 same watcher chat cannot overwrite the entries of seats the first run still owns. The tmux
 session name carries the run for the same reason: `tmux new-session -s` fails on a name that
 already exists, so a name without the run part collides with a seat the first run is still
 using. The name is a convenience for humans; the registry is the source of truth.
+
+## The watcher's own record (SKILL.md step 2)
+
+`~/.local/state/pair-watch/seats/<watcher-id>/watcher.json`, one file per watcher, rewritten
+every time the watcher chat starts, is reopened, or is resumed:
+
+```json
+{
+  "session_id": "<full watcher session id>",
+  "jsonl": "<absolute path of the watcher's session jsonl>",
+  "pid": 45626,
+  "socket": "uds:/tmp/cc-socks/45626.sock",
+  "updated_at": "<ISO-8601>"
+}
+```
+
+`pid` is the watcher's own claude process — the parent of its Bash tool shell, so from a Bash
+call `ps -o ppid= -p $$` prints it, and `lsof -a -U -p <pid>` lists the socket it owns under
+`/tmp/cc-socks/` (`uds:` + that path is `socket`). The file sits one level above the run
+directories, so it survives across runs of the same watcher chat; a reopen or resume rewrites it
+without changing the run-id of seats already launched. Seats read this file only when a send to
+the watcher fails or a report goes unanswered (brief rule 11); they trust it only if `updated_at`
+is newer than their last contact, `ps -p <pid>` shows the process alive, and the socket path
+exists — a stale file from a watcher that never came back must not send them into a dead socket.
+Even then a seat switches addresses only on a message that cites the run's `pw-watcher:` id. The
+file is what lets a reopened watcher be found without any seat messaging other sessions. Codex
+watchers write no such file (transport C uses files, not sockets).
 
 ## The launch command (SKILL.md step 4)
 

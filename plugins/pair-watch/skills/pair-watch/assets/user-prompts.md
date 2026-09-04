@@ -10,4 +10,5 @@ Strings the skill says to the user. Keep the meaning stable when editing; the pr
 - codex-first-paste: "Please paste into the Codex chat: \"Read {INBOX} and follow it.\""
 - codex-nudge: "The Codex implementer's watch has ended. Please type in the Codex chat: \"check the inbox\"."
 - codex-watcher-nudge: "The Codex watcher's watch has ended. Please type in the watcher chat: \"check the outbox\"."
+- watcher-reconnected: "This chat was reopened, so its messaging address changed. I rewrote watcher.json, re-derived each seat's socket from its tmux session, and told the seats the new address. Seats and their state: {SEATS}."
 - peer-silent: "Seat {SEAT} has been unresponsive for over 30 minutes. Observed facts: {FACTS}. Stopping here."

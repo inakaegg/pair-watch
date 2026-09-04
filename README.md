@@ -283,6 +283,12 @@ Typical symptoms and what they mean:
   into the Codex chat; the skill falls back to this manual nudge flow by design.
 - *A Codex watcher never reacts to the outbox* — its bounded watch may have ended or required
   approval. Type "check the outbox" in the watcher chat.
+- *You closed the watcher chat and reopened it, and the seats fell silent* — the session and its
+  history survive, but the messaging address is per process and changed. The reopened watcher
+  rewrites its address record and re-derives each seat's address from its tmux session; the
+  seats switch over on the next message. A seat that cannot reach any watcher writes its state
+  into the task record and stops, without committing, merging, or messaging other sessions
+  (`SKILL.md`, "Watcher restart and disappearance").
 - *Audit steps fail to find session files* — a CLI update moved them. File an issue; until then
   the setup still works, minus log audit.
 - *You are used to opening two chats and typing "wait for instructions" in one* — that flow was
