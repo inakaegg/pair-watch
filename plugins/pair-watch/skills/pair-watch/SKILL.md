@@ -63,6 +63,7 @@ Options on the invocation line:
 | `WATCH_ENDED role=watcher` | Codex watcher (own chat) | outbox file watch stopped after ~30 min; nudge the watcher chat |
 | `pair-inbox.md` / `pair-outbox.md` | watcher / implementer | transport C files under `_ai/tasks/<slug>/` in the main checkout |
 | `pw-watcher: <watcher session id>` | watcher (brief's first line) | binds the seat to the watcher that sent the brief; stays first so it lands in the seat's own session record |
+| `watcher.json` | watcher (registry) | the watcher's own current address record (`~/.local/state/pair-watch/seats/<watcher-id>/watcher.json`); rewritten every time the watcher chat starts, is reopened, or is resumed; read by seats when a send to the watcher fails |
 | `{WATCHER_ID} {TASK} {MY_ADDR} {MY_JSONL} {INBOX} {OUTBOX} {WATCH_SCRIPT}` | brief sender | placeholders that must be replaced before sending |
 
 ## Procedure
@@ -83,8 +84,14 @@ Options on the invocation line:
    names this session ("This session is <name> [<ref>]"); that name is `{MY_ADDR}`, the address
    seats send their messages to — pass it with the `[<ref>]` when the same name appears more
    than once in the listing, so a seat's reply cannot land in another session. Codex: find and confirm the current rollout under
-   `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` and record its thread id. Done when: the path
-   is confirmed to exist and the address is known.
+   `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` and record its thread id. Claude watcher only:
+   then write (or rewrite) `~/.local/state/pair-watch/seats/<watcher-id>/watcher.json` with your
+   session id, jsonl path, process id, and messaging socket (`references/seat-launch.md`, "The
+   watcher's own record") — this is what seats fall back to when a send to `{MY_ADDR}` fails, so
+   it is written before any seat exists and again on every reopen or resume of this chat. A Codex
+   watcher has no messaging socket and writes no such file; transport C seats never read one.
+   Done when: the path is confirmed to exist and the address is known (and, for a Claude
+   watcher, `watcher.json` is current).
 3. **Contract and preflight, before the first launch** — Write the task contract
    (`_ai/tasks/<slug>/TASK.md`, Shared rules below) if it does not exist; this happens on every
    route. For a code-changing task with launched seats, create the task branch and worktree
@@ -113,7 +120,12 @@ Options on the invocation line:
    named seat has been messaged.
 5. **Handshake** — Each seat replies with a start declaration (branch and worktree, scope,
    approach, its session jsonl path). Copy the `from` address of that reply verbatim; it is the
-   seat's only address from then on. Record the address and the session id in the registry.
+   seat's only address from then on. Record the address and the session id in the registry, and
+   for a tmux seat also its `socket`, derived from the tmux session (`tmux display -p -t
+   <session> '#{pane_pid}'` → `uds:/tmp/cc-socks/<pane_pid>.sock`); the socket is what survives
+   a watcher restart: the address you copied here stays in this chat's history, but nothing
+   guarantees it after either side has restarted (observed: the watcher's own address changed on
+   reopen), so the registry socket, re-derived from tmux, is the value to trust.
    If no declaration arrives within about five minutes, look at the seat's screen: a workspace
    trust dialog, a chooser, or an unread brief are the usual causes, each with a recovery in
    `references/seat-launch.md`; tell the user what you saw and what you do next with
@@ -190,6 +202,51 @@ Options on the invocation line:
   independence guarantee is per pair (watcher ↔ seat); seats are not independent of each other's
   mistakes when their scopes touch. Long runs should compact the watcher chat at a checkpoint.
 
+## Watcher restart and disappearance
+
+Two facts drive this section (observed live, 2026-09-04): a session's id and its jsonl survive
+closing and reopening the chat, but its messaging address does not — the socket
+(`/tmp/cc-socks/<pid>.sock`) and the ListAgents name and ref belong to the process, and every
+reopen or `--resume` is a new process. A seat that keeps sending to the old address gets
+`ENOENT`, and the watcher that reopens knows none of its seats' current names. Neither side can
+derive the other's socket from a session id alone (jsonl records carry no pid, and another
+process's environment is not readable on macOS), so the mapping is kept in the registry.
+
+- **Watcher reopened or resumed.** Rewrite `watcher.json` (the `watcher.json` part of step 2
+  only — keep the run's existing `<run-id>`; a resume is not a new run, and taking a fresh
+  run-id would orphan the seats' registry entries and their tmux names). Then, for every live
+  seat in your registry directory, derive its socket from the tmux session name recorded at
+  launch (`tmux display -p -t <session> '#{pane_pid}'`; a tmux-launched seat's pane pid is the
+  seat's claude process, verified on macOS) and update the entry; a `— seat:` session has no
+  tmux name you know, so it keeps its name + ref. Send each seat one message
+  whose first line is `pw-watcher: <your session id>` — that line is what a seat checks before
+  accepting a new address, whether it is still working or has stopped under rule 11 — followed by
+  "the watcher restarted; reply to the `from` of this message from now on" and a one-line status
+  request. Rebuild your view from the replies and the task records. Do not search ListAgents by
+  name, do not ask any session who it is, and do not treat a seat's silence as failure until
+  the stall rules apply. Say `watcher-reconnected` to the user once the replies are in.
+- **Watcher gone for good (or long).** Seats are told in their brief what to do (rule 11): when a
+  send to the watcher fails or a report goes unanswered for 30 minutes, read `watcher.json`; if
+  it is newer than their last contact and its pid is alive, switch to its socket and continue;
+  otherwise write their current state into the task record and stop — no commit, merge,
+  external request, deletion, or message to any other session. Recovery is the same chat
+  coming back — reopened, or `claude --resume <watcher session id>` — which reads those records
+  first, then reconnects as above; a seat accepts a new watcher address on exactly one
+  condition: the message's first line cites this run's `pw-watcher:` id, and only the original
+  chat can write that line truthfully. A different chat cannot take the seats over: they are
+  bound to the original watcher's id (Seat identity), and a watcher that starts fresh gets its
+  own id and its own registry directory. When the original chat is not coming back, the seats
+  stay stopped with their state in the task records; tell the user, who can resume the original
+  chat, or retire the seats and launch new ones under a new watcher for the remaining work. A
+  seat never goes looking for a watcher.
+- **Same-name seats.** Seats launched into the same project get the same ListAgents display name
+  (observed: two `ses-scout-f5`). After the handshake the watcher addresses a seat only by the
+  `from` it copied or by the registry socket, never by display name; before the handshake a
+  name is used only with its `[<ref>]`. A message sent by bare name to a shared name reached the
+  wrong seat in a live run (it carried a deletion instruction; the receiving seat noticed and
+  refused). The `— seat:` route keeps name + ref, because the watcher does not know that
+  session's tmux name.
+
 ## Pair-watch or the Workflow tool?
 
 Both run several agents at once; they differ in what the agents are.
@@ -213,7 +270,13 @@ Both run several agents at once; they differ in what the agents are.
 - Search ListAgents or session logs for a chat the user might have opened → Pair-watch does not
   search for sessions. Launch a seat (step 4), or use the name the user gave with `— seat:`.
 - Send to a session name or ref after the handshake → Name resolution is unreliable. The `from`
-  address of the start declaration is the only address.
+  address of the start declaration is the only address. After a watcher restart that address is
+  re-derived from the registry's tmux name ("Watcher restart and disappearance"), not looked up
+  by name.
+- Look for a lost watcher by messaging the sessions ListAgents shows → A seat reads `watcher.json`
+  and either switches to the socket it names or writes its state down and stops. A lost watcher
+  is found by the next watcher reading the registry and the task records, not by seats asking
+  around.
 - Launch a background or in-chat subagent as the implementer → That is solo delegation, not a
   pair-watch seat, and it inherits your effort. Launch a real CLI seat (step 4); a fresh-context
   subagent is allowed only as the read-only gate 3 reviewer fallback of step 6.
@@ -247,6 +310,10 @@ Both run several agents at once; they differ in what the agents are.
   facts and stop.
 - Conflict in role, spec, or permitted scope: do not decide provisionally; ask in your own chat
   and stop.
+- Seat side — the watcher is unreachable (a send fails, or a report is unanswered for 30
+  minutes) and `watcher.json` names no live process, or the send to the socket it names fails
+  too: write the current state into the task record and stop, per brief rule 11. No commit, merge, external request, deletion, or message
+  to any other session until a watcher citing this run's `pw-watcher:` id makes contact.
 - Codex-specific stop conditions: follow transport C.
 
 ## Shared rules (inlined minimum)
