@@ -19,7 +19,8 @@ class NativeSeatTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.bin = self.root / 'fake codex'
-        self.bin.write_text('#!' + sys.executable + '\nimport json,sys,time\nfrom pathlib import Path\np=Path(__file__).with_name("calls.jsonl")\nwith p.open("a") as f:f.write(json.dumps(sys.argv[1:])+"\\n")\nif sys.argv[1] != "queue":time.sleep(300)\n')
+        # The fake TUI prints the real header line so the helper's startup watch ends quickly.
+        self.bin.write_text('#!' + sys.executable + '\nimport json,sys,time\nfrom pathlib import Path\np=Path(__file__).with_name("calls.jsonl")\nwith p.open("a") as f:f.write(json.dumps(sys.argv[1:])+"\\n")\nif sys.argv[1] != "queue":\n    print("| >_ OpenAI Codex (v0.0.0-fixture)", flush=True)\n    time.sleep(300)\n')
         self.bin.chmod(0o755)
         self.records = []
         self.run_id = "run-" + uuid.uuid4().hex
@@ -137,6 +138,114 @@ class NativeSeatTest(unittest.TestCase):
         self.assertTrue((worktree/'relative.txt').exists())
         self.assertFalse((main/'relative.txt').exists())
 
+    TRUST_DIALOG = ("> You are in DIR\n\n  Do you trust the contents of this directory? Working with untrusted contents "
+                    "comes with higher risk of prompt injection.\n\n› 1. Yes, continue\n  2. No, quit\n\n  Press enter to continue\n")
+    LOGIN_SCREEN = "  Sign in to Codex\n\n› 1. Sign in with ChatGPT\n  2. Provide an API key\n\n  Press enter to continue\n"
+
+    def screen_fake(self, screen):
+        """A fake TUI that shows `screen`, waits for Enter, then prints the real header line."""
+        self.bin.write_text('#!' + sys.executable + '\nimport sys,time\nsys.stdout.write(' + repr(screen)
+                            + ')\nsys.stdout.flush()\nsys.stdin.readline()\nprint("| >_ OpenAI Codex (v0.0.0-fixture)", flush=True)\ntime.sleep(300)\n')
+
+    def repo_pair(self):
+        """A main checkout and its linked worktree, the only pair the helper auto-trusts."""
+        main = self.root / 'main'; worktree = self.root / 'linked'
+        subprocess.run(['git', 'init', '-q', str(main)], check=True)
+        subprocess.run(['git', '-C', str(main), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                        'commit', '--allow-empty', '-m', 'fixture'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(main), 'worktree', 'add', '-q', '-b', 'fixture', str(worktree)], check=True, capture_output=True)
+        return main, worktree
+
+    def start_in(self, cwd, worktree, seat='T', *extra):
+        inbox, outbox = self.root / f'in-{seat}', self.root / f'out-{seat}'
+        inbox.write_text('pw-watcher: watcher\n' + self.message(1)); outbox.write_text('')
+        record = self.root / 'watcher' / self.run_id / f'{seat}.json'; record.parent.mkdir(parents=True, exist_ok=True)
+        self.records.append(record)
+        r = self.call('start', record, '--run', self.run_id, '--seat', seat, '--cwd', cwd, '--worktree', worktree,
+                      '--inbox', inbox, '--outbox', outbox, '--codex', self.bin, '--model', 'fixture', '--effort', 'high', *extra)
+        return record, r
+
+    def screen(self, r):
+        return subprocess.run([r['tmux'], '-L', r['tmux_socket'], 'capture-pane', '-p', '-t', r['pane_id']],
+                              capture_output=True, text=True, check=True).stdout
+
+    def wait_screen(self, r, text):
+        import time
+        for _ in range(100):
+            if text in self.screen(r): break
+            time.sleep(0.05)
+        return self.screen(r)
+
+    def test_trust_dialog_is_accepted_for_a_linked_worktree_by_default(self):
+        self.screen_fake(self.TRUST_DIALOG)
+        main, worktree = self.repo_pair()
+        record, r = self.start_in(main, worktree)
+        self.assertEqual(r['trust_prompt'], 'accepted')
+        self.assertIn('OpenAI Codex', self.wait_screen(r, 'OpenAI Codex'))
+
+    def test_no_dialog_is_recorded_as_not_shown(self):
+        main, worktree = self.repo_pair()
+        record, r = self.start_in(main, worktree)
+        self.assertEqual(r['trust_prompt'], 'not-shown')
+
+    def test_unrelated_worktree_is_never_auto_trusted(self):
+        self.screen_fake(self.TRUST_DIALOG)
+        main, _ = self.repo_pair()
+        other = self.root / 'other'
+        subprocess.run(['git', 'init', '-q', str(other)], check=True)
+        record, r = self.start_in(main, other)
+        self.assertEqual(r['trust_prompt'], 'skipped-unrelated-worktree')
+        self.assertIn('1. Yes, continue', self.wait_screen(r, 'Do you trust'))
+        self.assertNotIn('OpenAI Codex', self.screen(r))
+        # Non-repository fixtures are unrelated too: nothing is auto-trusted outside a repository.
+        record2, r2 = self.start_in(self.root, self.root, 'U')
+        self.assertEqual(r2['trust_prompt'], 'skipped-unrelated-worktree')
+
+    def test_no_auto_trust_leaves_the_dialog_on_screen(self):
+        self.screen_fake(self.TRUST_DIALOG)
+        main, worktree = self.repo_pair()
+        record, r = self.start_in(main, worktree, 'T', '--no-auto-trust')
+        self.assertEqual(r['trust_prompt'], 'skipped')
+        self.assertIn('1. Yes, continue', self.wait_screen(r, 'Do you trust'))
+        self.assertNotIn('OpenAI Codex', self.screen(r))
+
+    def test_dialog_painted_in_two_steps_is_still_accepted(self):
+        main, worktree = self.repo_pair()
+        question, options = self.TRUST_DIALOG.split('\n\n› 1.', 1)
+        options = '\n\n› 1.' + options
+        self.bin.write_text('#!' + sys.executable + '\nimport sys,time\nsys.stdout.write(' + repr(question)
+                            + ')\nsys.stdout.flush()\ntime.sleep(1.5)\nsys.stdout.write(' + repr(options)
+                            + ')\nsys.stdout.flush()\nsys.stdin.readline()\nprint("| >_ OpenAI Codex (v0.0.0-fixture)", flush=True)\ntime.sleep(300)\n')
+        record, r = self.start_in(main, worktree, 'S')
+        self.assertEqual(r['trust_prompt'], 'accepted')
+        self.assertIn('OpenAI Codex', self.wait_screen(r, 'OpenAI Codex'))
+
+    def test_trust_timeout_must_be_finite(self):
+        main, worktree = self.repo_pair()
+        for value in ('nan', 'inf', '-1'):
+            with self.subTest(value=value):
+                inbox, outbox = self.root / f'in-{value}', self.root / f'out-{value}'
+                inbox.write_text('pw-watcher: watcher\n' + self.message(1)); outbox.write_text('')
+                record = self.root / 'watcher' / self.run_id / f'X{value}.json'; record.parent.mkdir(parents=True, exist_ok=True)
+                self.call('start', record, '--run', self.run_id, '--seat', f'X{value}', '--cwd', main, '--worktree', worktree,
+                          '--inbox', inbox, '--outbox', outbox, '--codex', self.bin, '--model', 'fixture', '--effort', 'high',
+                          '--trust-timeout', value, ok=False)
+                self.assertFalse(record.exists())
+
+    def test_other_prompts_are_never_answered(self):
+        main, worktree = self.repo_pair()
+        # A login screen: no Enter is sent, the watch times out as "unknown", the screen is untouched.
+        self.screen_fake(self.LOGIN_SCREEN)
+        record, r = self.start_in(main, worktree, 'L', '--trust-timeout', '1')
+        self.assertEqual(r['trust_prompt'], 'unknown')
+        self.assertIn('Sign in to Codex', self.wait_screen(r, 'Sign in'))
+        self.assertNotIn('OpenAI Codex', self.screen(r))
+        # The trust dialog with "No, quit" preselected: recognised as the dialog, but not answered.
+        self.screen_fake(self.TRUST_DIALOG.replace('› 1. Yes, continue\n  2. No, quit', '  1. Yes, continue\n› 2. No, quit'))
+        record, r = self.start_in(main, worktree, 'N', '--trust-timeout', '1')
+        self.assertEqual(r['trust_prompt'], 'unrecognized')
+        self.assertIn('No, quit', self.wait_screen(r, 'Do you trust'))
+        self.assertNotIn('OpenAI Codex', self.screen(r))
 
 if __name__ == '__main__':
     unittest.main()

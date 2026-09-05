@@ -16,9 +16,16 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 
 MARKER = re.compile(r"^PAIR_MSG_END seq=([1-9][0-9]*)$", re.MULTILINE)
+# Codex's directory-trust dialog (observed on codex-cli 0.153.4). "Yes, continue" is preselected,
+# so one Enter accepts it and Codex records the directory as trusted in its config.toml.
+TRUST_PROMPT = "Do you trust the contents of this directory?"
+TRUST_ACCEPT = re.compile(r"^\s*›\s*1\. Yes, continue\s*$", re.MULTILINE)
+# The TUI header that appears once startup is past the trust dialog (or when none was shown).
+TUI_READY = "OpenAI Codex"
 
 
 class SeatError(ValueError):
@@ -70,6 +77,44 @@ def locked(path):
     with path.with_name(path.name + ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
+
+
+def git_common_dir(path):
+    """The repository's common git directory, or None when the path is not inside a repository."""
+    result = subprocess.run(["git", "-C", str(path), "rev-parse", "--git-common-dir"],
+                            capture_output=True, text=True)
+    if result.returncode:
+        return None
+    return (Path(path) / result.stdout.strip()).resolve()
+
+
+def same_repository(cwd, worktree):
+    """True only when both paths belong to one repository (a checkout and its linked worktree)."""
+    common = git_common_dir(cwd)
+    return common is not None and common == git_common_dir(worktree)
+
+
+def accept_trust(record, timeout, interval=0.5):
+    """Accept the directory-trust dialog once if it appears during startup.
+
+    Returns "accepted", "not-shown" (the TUI header appeared without a dialog),
+    "unrecognized" (a dialog without the expected preselection) or "unknown" (timeout)."""
+    deadline = time.monotonic() + timeout
+    seen_prompt = False
+    while True:
+        screen = tmux(record, "capture-pane", "-p", "-t", record["pane_id"])
+        if TRUST_PROMPT in screen:
+            seen_prompt = True
+            # The TUI may paint the question before its options; keep watching until the
+            # preselected "Yes, continue" line is on screen or the deadline passes.
+            if TRUST_ACCEPT.search(screen):
+                tmux(record, "send-keys", "-t", record["pane_id"], "Enter")
+                return "accepted"
+        elif TUI_READY in screen:
+            return "not-shown"
+        if time.monotonic() >= deadline:
+            return "unrecognized" if seen_prompt else "unknown"
+        time.sleep(interval)
 
 
 def live(record):
@@ -133,6 +178,14 @@ def start(args, path):
         created_session = True
         record["pane_id"], record["pane_pid"] = pane.split("|")
         tmux(record, "set-option", "-p", "-t", record["pane_id"], "@pair_watch_owner", token)
+        # Accepting the dialog trusts the whole repository persistently, so it is done only when the
+        # worktree really is a linked worktree of the recorded main checkout (one git common dir).
+        if args.no_auto_trust:
+            record["trust_prompt"] = "skipped"
+        elif not same_repository(cwd, worktree):
+            record["trust_prompt"] = "skipped-unrelated-worktree"
+        else:
+            record["trust_prompt"] = accept_trust(record, args.trust_timeout)
         record["status"] = "started"
         save(path, record)
     except (OSError, ValueError, subprocess.SubprocessError):
@@ -213,11 +266,17 @@ def main():
     parser.add_argument("--rollout", type=Path)
     parser.add_argument("--seq", type=int)
     parser.add_argument("--final-report-verified", action="store_true")
+    parser.add_argument("--no-auto-trust", action="store_true",
+                        help="do not answer Codex's directory-trust dialog; leave it on screen")
+    parser.add_argument("--trust-timeout", type=float, default=20.0,
+                        help="seconds to watch the pane for the trust dialog or the TUI header")
     args = parser.parse_args()
     required = {"start": ("run", "seat", "cwd", "worktree", "inbox", "outbox", "model", "effort"),
                 "bind": ("thread", "rollout"), "notify": ("seq",), "stop": ()}[args.action]
     if any(getattr(args, key) is None for key in required):
         parser.error("Missing action arguments: " + ", ".join(required))
+    if not (args.trust_timeout >= 0 and args.trust_timeout != float("inf")):  # rejects nan and inf too
+        parser.error("--trust-timeout must be a finite number of seconds, 0 or more")
     path = args.record.resolve()
     try:
         if any(not re.fullmatch(r"[A-Za-z0-9_.:-]+", value) or value in {".", ".."} for value in (args.watcher, args.run, args.seat)):

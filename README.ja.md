@@ -73,7 +73,7 @@ Claudeチャットで `/pair-watch:pair-watch タスク — peer: Codex CLI` を
 
 ### Codex + Codex
 
-Codexチャットを1つ開き、`$pair-watch タスク` を実行します。そのチャットが読み取り専用の監視役となり、実装席を起動します。Python 3、tmux、`codex queue` が使えるCodex CLIが必要です（0.153.4で検証）。Claudeは不要です。席は `-a never -s workspace-write` で動き、作業領域とhookの信頼確認は通常どおり必要です。
+Codexチャットを1つ開き、`$pair-watch タスク` を実行します。そのチャットが読み取り専用の監視役となり、実装席を起動します。Python 3、tmux、`codex queue` が使えるCodex CLIが必要です（0.153.4で検証）。Claudeは不要です。席は `-a never -s workspace-write` で動きます。Codexは初めて見るリポジトリで「このディレクトリを信頼するか」を尋ねますが（linked worktreeはメインのcheckoutと同じ扱いです）、起動helperが既定でこのダイアログに答えます（選択済みの「Yes, continue」でEnterを押します）。その結果、Codexはそのリポジトリを設定ファイル（`CODEX_HOME` を設定していなければ `~/.codex/config.toml`）に信頼済みとして記録し、席を引退させた後も残ります。hookの信頼確認は従来どおり手動です。
 
 すでに開いたCodex席を使う場合だけ `— seat: THREAD_UUID` を加えます。この経路は従来の初回貼り付けとファイル待機を維持し、待機期限が切れたら該当チャットへ入力して再開します。
 

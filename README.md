@@ -115,7 +115,12 @@ identity and uses native queue notifications for later instructions.
 Start one Codex chat and run `$pair-watch TASK`. That chat is the read-only watcher and
 launches the implementer seats. This route needs Python 3, tmux and a Codex CLI with
 `codex queue` (verified with 0.153.4). It does not need Claude. Codex seats use
-`-a never -s workspace-write`; workspace and hook trust still follow normal approval.
+`-a never -s workspace-write`. Codex asks whether to trust a repository it has not seen
+(a linked worktree counts as its main checkout); the launch helper answers that dialog for
+you by default (it presses Enter on the preselected "Yes, continue"), and Codex records the
+repository as trusted in its config (`~/.codex/config.toml` unless you set `CODEX_HOME`),
+where it stays after the seat is retired.
+Hook trust still follows normal approval.
 
 To use a Codex chat you already opened, add `— seat: THREAD_UUID`. Only this legacy route
 needs the first paste and bounded file watch; after its wait expires, nudge the relevant chat.
