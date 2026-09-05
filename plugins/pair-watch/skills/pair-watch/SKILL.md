@@ -131,7 +131,8 @@ record it and do not invent additional fallback candidates for it.
    jsonl for claims no artifact can prove, and put anything that needs the user on a single
    pending list in your own chat. Gates, reviewer selection and commit conditions: Shared rules
    below. Use project review settings when present; otherwise resolve `--role reviewer`
-   with the bundled resolver and the same availability rules. A fresh-context Codex or
+   with the bundled resolver, passing `--primary` as the seat's primary CLI (the peer CLI
+   when `— peer:` selected one, else your own CLI), under the same availability rules. A fresh-context Codex or
    Claude reviewer uses read-only tools and only review artifacts. Disclose fallback in the
    result. A review that ended in tool failure or without a `VERDICT` line does not count as a
    round. While waiting on a seat, do not wait indefinitely on receive: watch the seat's session

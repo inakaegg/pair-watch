@@ -43,6 +43,23 @@ class PackageTest(unittest.TestCase):
             argv=[sys.executable,str(script),'--repo',str(root),'--primary','codex','--role','reviewer']
             def call(*extra):return subprocess.run(argv+list(extra),env=env,capture_output=True,text=True)
             self.assertEqual(json.loads(call().stdout)['candidate'],candidates[0])
+            # The reviewer list follows the primary CLI: a Claude watcher gets the Claude entry first.
+            claude_first=subprocess.run([sys.executable,str(script),'--repo',str(root),'--primary','claude','--role','reviewer'],env=env,capture_output=True,text=True)
+            self.assertEqual(json.loads(claude_first.stdout)['candidate'],candidates[1])
+            # Within each CLI the written order survives, and malformed entries still fail as settings errors.
+            mixed=['claude:m(low)','codex:a(low)','claude:n(low)','codex:b(low)']
+            (root/'pair-watch.settings.json').write_text(json.dumps({'reviewer':mixed}))
+            order=[]
+            excluded=[]
+            for _ in mixed:
+                r=subprocess.run([sys.executable,str(script),'--repo',str(root),'--primary','claude','--role','reviewer']+sum([['--unavailable',c+'=rate-limit'] for c in excluded],[]),env=env,capture_output=True,text=True)
+                chosen=json.loads(r.stdout)['candidate'];order.append(chosen);excluded.append(chosen)
+            self.assertEqual(order,['claude:m(low)','claude:n(low)','codex:a(low)','codex:b(low)'])
+            for bad in ([123],[None,'codex:a(low)'],[['codex:a(low)']]):
+                (root/'pair-watch.settings.json').write_text(json.dumps({'reviewer':bad}))
+                r=subprocess.run([sys.executable,str(script),'--repo',str(root),'--primary','claude','--role','reviewer'],env=env,capture_output=True,text=True)
+                self.assertEqual(r.returncode,2,r.stderr);self.assertEqual(json.loads(r.stdout)['status'],'invalid-settings')
+            (root/'pair-watch.settings.json').write_text(json.dumps({'reviewer':candidates}))
             default_role=subprocess.run([sys.executable,str(script),'--repo',str(root),'--primary','codex','--role','implementer'],env=env,capture_output=True,text=True)
             self.assertTrue(json.loads(default_role.stdout)['source'].endswith('references/model-defaults.json'))
             self.assertEqual(json.loads(call('--unavailable',candidates[0]+'=rate-limit').stdout)['candidate'],candidates[1])

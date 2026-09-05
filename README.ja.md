@@ -79,9 +79,11 @@ Codexチャットを1つ開き、`$pair-watch タスク` を実行します。�
 
 ### モデル設定と自動フォールバック
 
-モデル名・思考量・候補の優先順は [`model-defaults.json`](plugins/pair-watch/skills/pair-watch/references/model-defaults.json) にあります。作業repoでgit管理する `pair-watch.settings.json` へ、変更する役割の設定を書けば上書きできます。`implementer` は主CLIの `codex`・`claude` それぞれに候補リストを持ち、`reviewer` は1つのリストです。各候補は `CLI:MODEL(EFFORT)` で指定します。指定した役割全体が置き換わります。レビューにはagent-kitなどのプロジェクト設定があれば、それを優先します。
+モデル名・思考量・候補の優先順は [`model-defaults.json`](plugins/pair-watch/skills/pair-watch/references/model-defaults.json) にあります。作業repoでgit管理する `pair-watch.settings.json` へ、変更する役割の設定を書けば上書きできます。`implementer` は主CLIの `codex`・`claude` それぞれに候補リストを持ち、`reviewer` は1つのリストです。各候補は `CLI:MODEL(EFFORT)` で指定します。指定した役割全体が置き換わります。
 
-CLI未導入、認証不能、明確なモデル利用不可、利用上限の場合は設定順で自動切り替えします。レビュー指摘やテスト失敗では切り替えません。各候補は1回までで、候補外のモデルや有料APIへは広げません。CLIが変わる場合は通信手段も確認します。Claude席にはSendMessageが使える監視役が必要です。
+レビュー役のリストは、既定のものも自分で書いたものも、使う前に主CLIの候補が先になるよう並べ替えられます。主CLIは監視役自身のCLIで、`— peer: Codex CLI` で相手を指定したときはそのCLIです。Codexの監視役はCodexで、Claudeの監視役はClaudeで、Codex席を起動したClaudeの監視役はCodexでレビューし、残りの候補が書いた順で続きます。理由はコストで、その席がすでに使っている契約の枠でレビューするためです。並べ替えは同じCLIの中では書いた順を保ちます。Codexのモデル同士の優先順はリストの順で決めます。主CLIの候補がリストに無ければ、書いた順のまま使います。この並べ替えとは別に、agent-kitなどのプロジェクト設定があれば、レビュー役はそちらを優先します。
+
+CLI未導入、認証不能、明確なモデル利用不可、利用上限の場合は、並べ替え後の順で自動切り替えします。レビュー指摘やテスト失敗では切り替えません。各候補は1回までで、候補外のモデルや有料APIへは広げません。CLIが変わる場合は通信手段も確認します。Claude席にはSendMessageが使える監視役が必要です。
 
 ## 実装役を増やす
 

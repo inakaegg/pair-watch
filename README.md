@@ -131,13 +131,22 @@ The model names, reasoning levels and ordered fallback lists are stored in
 [`model-defaults.json`](plugins/pair-watch/skills/pair-watch/references/model-defaults.json).
 Override them in the repository's tracked `pair-watch.settings.json`: `implementer` maps
 each primary CLI (`codex` or `claude`) to a list; `reviewer` is a list. Each candidate is
-`CLI:MODEL(EFFORT)`. A supplied role replaces that role's defaults. Project review settings
-such as agent-kit take precedence for reviewers.
+`CLI:MODEL(EFFORT)`. A supplied role replaces that role's defaults.
+
+The reviewer list — the default one or the one you supplied — is reordered before use so
+the primary CLI comes first. The primary CLI is the watcher's own, or the peer CLI when
+`— peer: Codex CLI` selected one: a Codex watcher reviews with Codex, a Claude watcher
+with Claude, and a Claude watcher that launched a Codex seat with Codex; the remaining
+candidates follow in the order written. The reason is cost: the review then runs on the
+subscription that seat already uses. The order you wrote is kept within each CLI, so to
+prefer one Codex model over another, order them in the list; when the list has no
+candidate for the primary CLI, it is used as written. Separately from this ordering,
+project review settings such as agent-kit's take precedence for reviewers.
 
 The resolver selects an installed CLI and reports the candidate and settings source.
 Confirmed authentication, model availability or quota errors permit automatic fallback
-in that list. Review findings and test failures do not. Every candidate is tried at most
-once; no unlisted model or paid API is substituted. A provider change also requires its
+in that resolved order. Review findings and test failures do not. Every candidate is tried
+at most once; no unlisted model or paid API is substituted. A provider change also requires its
 communication route to be available: Claude seats need a watcher with SendMessage.
 
 ## Running several implementers

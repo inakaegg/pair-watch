@@ -36,6 +36,11 @@ def main():
             if not match:
                 raise ValueError('use CLI:MODEL(EFFORT) for every candidate')
             parsed.append((candidate, *match.groups()))
+        if a.role == 'reviewer':
+            # The reviewer list is one list for both CLIs; the primary CLI's entries go first so the
+            # session's own subscription is used, and the written order decides within each CLI.
+            # Done after parsing so malformed entries still fail as invalid settings (exit 2).
+            parsed = [p for p in parsed if p[1] == a.primary] + [p for p in parsed if p[1] != a.primary]
         unavailable = {}
         for item in a.unavailable:
             candidate, _, reason = item.partition('=')

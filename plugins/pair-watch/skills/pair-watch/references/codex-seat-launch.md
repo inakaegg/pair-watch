@@ -18,7 +18,9 @@ For an explicitly named, user-opened Codex thread, use transport-codex.md instea
    --primary codex --repo REPO_ROOT`. An explicit peer determines primary; otherwise
    use the watcher's CLI. The defaults are in `references/model-defaults.json`.
    A tracked `pair-watch.settings.json` in the working repository can replace a role.
-   The implementer role maps `codex` and `claude` to ordered lists; reviewer is one list.
+   The implementer role maps `codex` and `claude` to ordered lists; reviewer is one list
+   whose entries for the primary CLI are tried first (the same primary as the seat: the
+   peer CLI when one was named, else the watcher's), and the rest follow as written.
    Every list entry is `CLI:MODEL(EFFORT)`. Record candidate, source and skipped reasons.
    Pass the returned model and effort explicitly. Never substitute a CLI default.
 3. Missing CLIs are skipped automatically. A confirmed authentication, model availability
