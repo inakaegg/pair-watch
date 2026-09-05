@@ -1,0 +1,20 @@
+{
+  "name": "pair-watch",
+  "interface": {
+    "displayName": "pair-watch"
+  },
+  "plugins": [
+    {
+      "name": "pair-watch",
+      "source": {
+        "source": "local",
+        "path": "./plugins/pair-watch"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

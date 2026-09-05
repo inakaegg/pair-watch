@@ -1,7 +1,7 @@
 {
   "name": "pair-watch",
-  "description": "Supervised pair for coding agents, launched from one chat: the invoking chat is the read-only watcher and starts implementer sessions itself (tmux), verifies their reports against git, tests and session logs, and runs the review gates. Claude seats via SendMessage; Codex seats via sequenced files, including Codex + Codex.",
-  "version": "0.4.0",
+  "description": "Supervised pair for coding agents, launched from one chat: the invoking chat is the read-only watcher and starts implementer sessions itself (tmux), verifies their reports against git, tests and session logs, and runs the review gates. Claude seats via SendMessage; Codex seats via native tmux launch, queue notifications and sequenced files, including Codex + Codex.",
+  "version": "0.5.0",
   "author": {
     "name": "inakaegg"
   }

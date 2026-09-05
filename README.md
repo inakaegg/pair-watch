@@ -2,7 +2,7 @@
 
 🇯🇵 日本語: [README.ja.md](README.ja.md)
 
-A Claude Code plugin that runs a coding task as a supervised pair from one chat. The chat you
+A plugin for Claude Code and Codex CLI that runs a coding task as a supervised pair from one chat. The chat you
 type the command in becomes the **read-only watcher**; it launches one or more **implementer**
 sessions itself, verifies their reports against git, tests, and their own session transcripts,
 and runs an independent review before anything is committed. The watcher and each implementer
@@ -15,7 +15,7 @@ flowchart LR
     U[User] -- "/pair-watch:pair-watch task<br/>(one chat)" --> W[Watcher chat<br/>read-only]
     W -- "launches (tmux)<br/>brief · SendMessage" --> A[Implementer seat A<br/>claude --model … --effort …]
     W -- "launches (tmux)<br/>brief · SendMessage" --> B[Implementer seat B]
-    W <-. "inbox/outbox files<br/>(Codex seat you start)" .-> C[Codex implementer]
+    W <-. "inbox/outbox files<br/>(Codex: tmux + native queue)" .-> C[Codex implementer]
     W -. "audits session logs<br/>(jsonl / rollout)" .-> A
 ```
 
@@ -34,15 +34,14 @@ When a seat's task ends, the watcher retires it.
 
 Two kinds of seat, selected by the invocation line:
 
-- **Claude seat** (default) — launched by the watcher with `claude --model … --effort …
+- **Claude seat** (default from Claude) — launched by the watcher with `claude --model … --effort …
   --dangerously-skip-permissions` under tmux; push-driven messaging (SendMessage). No human
   watches its screen, so anything that needs a decision is sent to the watcher.
-- **Codex seat** (`— peer: Codex CLI`) — you start the Codex chat yourself; Codex cannot join
-  cross-session messaging, so coordination switches to two sequenced files (the watcher writes
-  `pair-inbox.md`, the implementer writes `pair-outbox.md`) plus rollout audit. A Codex
-  implementer holds its turn while waiting for inbox; in Codex + Codex mode the Codex watcher
-  likewise holds its turn while waiting for outbox. Design rationale:
-  [design-inbox-watch](plugins/pair-watch/skills/pair-watch/references/design-inbox-watch.md).
+- **Codex seat** (default from Codex, or `— peer: Codex CLI`) — the watcher starts the
+  interactive CLI under tmux. Instructions and reports use sequenced inbox/outbox files;
+  `codex queue` wakes the next turn, including when the notification arrives mid-turn.
+  The watcher checks the rollout against each report. `— seat: <thread UUID>` retains the
+  user-opened file-watch route.
 
 If you would rather use a chat you opened yourself, name it: `— seat: <name from the session
 list>`. The watcher then briefs that session instead of launching one. It never searches for a
@@ -50,14 +49,29 @@ session on its own.
 
 ## Install
 
+Claude Code:
+
 ```text
 /plugin marketplace add inakaegg/pair-watch
 /plugin install pair-watch@pair-watch
 ```
 
-### Before the first run
+Codex CLI (the same repository also carries a Codex plugin manifest and marketplace):
 
-Launched seats run with `--dangerously-skip-permissions`, and the watcher starts them through
+```text
+codex plugin marketplace add https://github.com/inakaegg/pair-watch
+codex plugin add pair-watch@pair-watch
+```
+
+Start a new session afterwards; the skill is then available as `$pair-watch`. In a Codex chat
+the plugin launches a Codex + Codex setup by default (below); a Codex chat cannot
+message Claude seats.
+
+### Before the first run (Claude seats)
+
+For Codex seats, follow "Codex + Codex" below; these Claude messaging settings are not needed.
+
+Launched Claude seats run with `--dangerously-skip-permissions`, and the watcher starts them through
 tmux, so tmux has to be installed (verified on macOS). Three settings have to be in place, or
 the launch fails silently; the watcher checks them and tells you which one is missing.
 
@@ -87,30 +101,39 @@ Then, in one chat:
 /pair-watch:pair-watch <one-line task>
 ```
 
-Options on the same line: `— implementer: opus(xhigh)` to set the seats' model and effort
-(that is the default); `— seat: <name>` to use a chat you opened; `— peer: Codex CLI` for a
-Codex implementer.
+Options: `— implementer: MODEL(EFFORT)` overrides a seat for this run; `— seat: NAME`
+uses a user-opened Claude chat; `— peer: Codex CLI` selects a Codex implementer.
 
 ### Claude watcher + Codex implementer
 
-1. Start Codex CLI in the same repository, in a separate terminal (Codex installed separately).
-2. In the Claude chat: `/pair-watch:pair-watch <one-line task> — peer: Codex CLI`.
-3. On first start only, the watcher asks you to paste one line into the Codex chat ("Read
-   `<inbox path>` and follow it."). After that, the Codex implementer watches the inbox itself.
-
-Launching a Codex seat from the watcher has not been verified, so the Codex chat is the one
-seat you still start yourself.
+In the Claude chat run `/pair-watch:pair-watch TASK — peer: Codex CLI`.
+The watcher creates the worktree and channels, launches Codex under tmux, verifies its
+identity and uses native queue notifications for later instructions.
 
 ### Codex + Codex
 
-1. Start two Codex CLI chats in the same repository.
-2. In the chat you want as the read-only watcher:
-   `/pair-watch:pair-watch <one-line task> — peer: Codex CLI`.
-3. The watcher hands you one line to paste into the implementer chat — once. After that the
-   implementer waits on the inbox and the watcher waits on the outbox.
+Start one Codex chat and run `$pair-watch TASK`. That chat is the read-only watcher and
+launches the implementer seats. This route needs Python 3, tmux and a Codex CLI with
+`codex queue` (verified with 0.153.4). It does not need Claude. Codex seats use
+`-a never -s workspace-write`; workspace and hook trust still follow normal approval.
 
-If a bounded wait (about 30 minutes) expires, pair-watch tells you which role to nudge: type
-"check the inbox" to the implementer, "check the outbox" to the watcher.
+To use a Codex chat you already opened, add `— seat: THREAD_UUID`. Only this legacy route
+needs the first paste and bounded file watch; after its wait expires, nudge the relevant chat.
+
+### Model settings and fallback
+
+The model names, reasoning levels and ordered fallback lists are stored in
+[`model-defaults.json`](plugins/pair-watch/skills/pair-watch/references/model-defaults.json).
+Override them in the repository's tracked `pair-watch.settings.json`: `implementer` maps
+each primary CLI (`codex` or `claude`) to a list; `reviewer` is a list. Each candidate is
+`CLI:MODEL(EFFORT)`. A supplied role replaces that role's defaults. Project review settings
+such as agent-kit take precedence for reviewers.
+
+The resolver selects an installed CLI and reports the candidate and settings source.
+Confirmed authentication, model availability or quota errors permit automatic fallback
+in that list. Review findings and test failures do not. Every candidate is tried at most
+once; no unlisted model or paid API is substituted. A provider change also requires its
+communication route to be available: Claude seats need a watcher with SendMessage.
 
 ## Running several implementers
 
@@ -208,18 +231,18 @@ As a summary:
   [agent-kit](https://github.com/inakaegg/agent-kit), whose fuller contract and three-stage
   review slot in as that replacement.
 - **Nothing resident to enable.** One command, no environment flag or daemon. Claude seats are
-  push-driven; Codex seats use a bounded shell wait included with the skill.
+  push-driven; native Codex seats use queue notifications. User-opened Codex seats retain the bounded file wait.
 
 ### Before you use it
 
 - **Cost.** Each seat is a full session, plus one reviewer process at each review.
-- **Launched seats skip permission prompts.** They run with `--dangerously-skip-permissions`;
+- **Launched Claude seats skip permission prompts.** They run with `--dangerously-skip-permissions`;
   invoking pair-watch is your opt-in for that. The seat's questions go to the watcher, and the
   watcher's questions go to you.
 - **Most of the protocol is instructions.** Roles, stop conditions, writer ownership, and the
   `VERDICT` discipline depend on the models following the skill. The sequence-wait helper and
   static checks enforce only message completion and core document invariants.
-- **A Codex seat needs room for long-running commands.** The file watch holds a shell sleep
+- **A user-opened Codex seat needs room for long-running commands.** The file watch holds a shell sleep
   loop; where every command needs approval, that seat falls back to a manual nudge.
 
 Use it for a non-trivial change where you want a second pair of eyes that verifies rather than
@@ -241,13 +264,13 @@ Auditing is the point of the watcher role, so be aware of what it touches:
 - The watcher writes a small registry outside the repository: one file per seat at
   `~/.local/state/pair-watch/seats/<watcher-id>/<run-id>/`, recording the seat's label, project
   directory, tmux session, model, session id, and retirement time, so a watcher can tell its own
-  seats from another run's. Entries are removed together at the end of the run; entries left by
-  an interrupted run are safe to delete by hand.
-- The watcher reads your Claude Code settings to check the three prerequisites above; it never
+  seats from another run's. Native Codex records and channel claims remain as retired audit
+  records; use new paths for a new run. Claude records are removed at the end of the run.
+- For Claude seats, the watcher reads your Claude Code settings to check the three prerequisites above; it never
   edits them.
 - For code changes, the work happens on a task branch in a separate git worktree. The watcher
   creates them before launching a seat, so it can point the seat at them; a `— seat:` session
-  creates its own, and a Codex implementer creates its own unless its sandbox cannot write to
+  creates its own, and a user-opened Codex implementer creates its own unless its sandbox cannot write to
   `.git`, in which case the watcher does it. Work never happens on the `main` checkout.
 - Everything stays on your machine. The skill sends nothing anywhere.
 
@@ -255,7 +278,7 @@ Auditing is the point of the watcher role, so be aware of what it touches:
 
 - Claude Code 2.1.224+ (cross-session messaging: SendMessage/ListAgents/Monitor; tmux-launched
   sessions verified on macOS)
-- Codex CLI 0.147-line, required when either seat is Codex (rollout layout
+- Codex CLI 0.153.4 for native launch, required when either seat is Codex (rollout layout
   `~/.codex/sessions/YYYY/MM/DD/`)
 
 Log audit reads the session files both CLIs keep locally; see "What it reads and writes" for
@@ -265,6 +288,10 @@ the paths.
 
 Typical symptoms and what they mean:
 
+- *A native Codex seat stops responding* — inspect its owned tmux pane and rollout. Preserve
+  unreported work; do not automatically restart or adopt another process. A reopened Codex
+  watcher checks the same registry and thread before notifying.
+
 - *The watcher says a permission rule, `crossSessionInbound`, or a trusted directory is missing*
   — add what it names ("Before the first run" above) and tell it; it does not launch until then.
 - *A launched seat never sends its start declaration* — the watcher looks at the seat's screen:
@@ -273,22 +300,22 @@ Typical symptoms and what they mean:
   recoverable, it reports and waits.
 - *A `— seat:` name is not listed* — that chat is not open, or the name differs. Give the exact
   name from the session list, or drop the option and let the watcher launch a seat.
-- *A launched seat sits on a question in its own window* — the brief tells seats never to ask on
+- *A launched Claude seat sits on a question in its own window* — the brief tells seats never to ask on
   screen; if one does, the watcher dismisses the chooser with `tmux send-keys`, or kills the seat
   and resumes it with `claude --resume`. Nothing is lost either way.
-- *The watcher is waiting for the first paste into the Codex chat* — on first start it asks you
+- *The watcher is waiting for the first paste into a user-opened Codex chat* — on first start it asks you
   for one paste and waits up to 15 minutes; paste the line and it resumes.
-- *A Codex seat never reacts to the inbox* — the file watch may have ended (30-minute cap) or the
+- *A user-opened Codex seat never reacts to the inbox* — the file watch may have ended (30-minute cap) or the
   environment requires approval per command, where the watch cannot run. Type "check the inbox"
   into the Codex chat; the skill falls back to this manual nudge flow by design.
-- *A Codex watcher never reacts to the outbox* — its bounded watch may have ended or required
+- *A Codex watcher on the manual route never reacts to the outbox* — its bounded watch may have ended or required
   approval. Type "check the outbox" in the watcher chat.
-- *You closed the watcher chat and reopened it, and the seats fell silent* — the session and its
+- *You closed a Claude watcher chat and reopened it, and its Claude seats fell silent* — the session and its
   history survive, but the messaging address is per process and changed. The reopened watcher
   rewrites its address record and re-derives each seat's address from its tmux session; the
   seats switch over on the next message. A seat that cannot reach any watcher writes its state
   into the task record and stops, without committing, merging, or messaging other sessions
-  (`SKILL.md`, "Watcher restart and disappearance").
+  (`SKILL.md`, "Claude watcher restart and disappearance").
 - *Audit steps fail to find session files* — a CLI update moved them. File an issue; until then
   the setup still works, minus log audit.
 - *You are used to opening two chats and typing "wait for instructions" in one* — that flow was

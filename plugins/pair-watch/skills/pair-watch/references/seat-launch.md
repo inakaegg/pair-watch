@@ -52,8 +52,8 @@ Three things make a launch fail silently. Check them once per run, before the fi
   "project": "<absolute project directory>",
   "route": "tmux",
   "tmux_session": "pw-<watcher-id8>-<run-hhmmss>-A",
-  "model": "opus",
-  "effort": "xhigh",
+  "model": "MODEL_FROM_SETTINGS",
+  "effort": "EFFORT_FROM_SETTINGS",
   "started": "<ISO-8601>",
   "address": null,
   "socket": null,
@@ -108,7 +108,7 @@ watchers write no such file (transport C uses files, not sockets).
 Write the filled brief to a file first (a scratch file outside the repository), then:
 
 ```sh
-tmux new-session -d -s pw-<watcher-id8>-<run-hhmmss>-A -c <trusted-dir> 'env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_CODE_SSE_PORT -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_AGENT_ID claude --model opus --effort xhigh --dangerously-skip-permissions "$(cat <brief file>)" --add-dir <worktree>'
+tmux new-session -d -s pw-<watcher-id8>-<run-hhmmss>-A -c <trusted-dir> 'env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_CODE_SSE_PORT -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_AGENT_ID claude --model <resolved-model> --effort <resolved-effort> --dangerously-skip-permissions "$(cat <brief file>)" --add-dir <worktree>'
 ```
 
 Rules that came out of failed launches:
