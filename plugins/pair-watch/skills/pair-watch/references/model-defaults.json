@@ -1,7 +1,7 @@
 {
   "implementer": {
-    "codex": ["codex:gpt-5.6-sol(high)", "claude:opus(high)"],
-    "claude": ["claude:opus(high)", "codex:gpt-5.6-sol(high)"]
+    "codex": ["codex:gpt-5.6-sol(medium)", "claude:opus(medium)"],
+    "claude": ["claude:opus(medium)", "codex:gpt-5.6-sol(medium)"]
   },
-  "reviewer": ["codex:gpt-5.6-sol(high)", "claude:opus(high)"]
+  "reviewer": ["codex:gpt-5.6-sol(medium)", "claude:opus(medium)"]
 }
