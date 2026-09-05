@@ -1,4 +1,4 @@
-# pair-watch
+# <img src="assets/pair-watch-icon.svg" alt="" width="80" align="middle"> pair-watch
 
 > 内容は英語版（[README.md](README.md)）と対応しています。表現が食い違う場合は英語版を正とします。
 
