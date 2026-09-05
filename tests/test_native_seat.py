@@ -1,0 +1,251 @@
+import importlib.util
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+import uuid
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / 'plugins/pair-watch/skills/pair-watch/scripts/codex-seat.py'
+
+
+class NativeSeatTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="pair test '$ ")
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.bin = self.root / 'fake codex'
+        # The fake TUI prints the real header line so the helper's startup watch ends quickly.
+        self.bin.write_text('#!' + sys.executable + '\nimport json,sys,time\nfrom pathlib import Path\np=Path(__file__).with_name("calls.jsonl")\nwith p.open("a") as f:f.write(json.dumps(sys.argv[1:])+"\\n")\nif sys.argv[1] != "queue":\n    print("| >_ OpenAI Codex (v0.0.0-fixture)", flush=True)\n    time.sleep(300)\n')
+        self.bin.chmod(0o755)
+        self.records = []
+        self.run_id = "run-" + uuid.uuid4().hex
+        self.addCleanup(self.retire)
+
+    def retire(self):
+        for record in self.records:
+            if record.exists():
+                r = json.loads(record.read_text())
+                subprocess.run([r['tmux'], '-L', r['tmux_socket'], 'kill-server'], capture_output=True)
+
+    def call(self, action, record, *args, watcher='watcher', ok=True):
+        r = subprocess.run([sys.executable, str(SCRIPT), action, '--record', str(record),
+                            '--watcher', watcher, '--run', record.parent.name, '--seat', record.stem, *map(str, args)], text=True, capture_output=True)
+        if ok:
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return json.loads(r.stdout)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        return r.stderr
+
+    def message(self, n, text='task'):
+        return f'PAIR_MSG_BEGIN seq={n}\n{text}\nPAIR_MSG_END seq={n}\n'
+
+    def start(self, seat='A'):
+        inbox, outbox = self.root / f'in-{seat}', self.root / f'out-{seat}'
+        inbox.write_text('pw-watcher: watcher\n' + self.message(1))
+        outbox.write_text('')
+        record = self.root / 'watcher' / self.run_id / f'{seat}.json'
+        record.parent.mkdir(parents=True, exist_ok=True)
+        self.records.append(record)
+        r = self.call('start', record, '--run', self.run_id, '--seat', seat,
+                      '--cwd', self.root, '--worktree', self.root, '--inbox', inbox,
+                      '--outbox', outbox, '--codex', self.bin, '--model', 'fixture-model', '--effort', 'high')
+        return record, r
+
+    def bind(self, record, r):
+        thread = str(uuid.uuid4())
+        rollout = self.root / (thread + '.jsonl')
+        data = [{'type':'session_meta','payload':{'id':thread}},
+                {'type':'response_item','payload':{'role':'user','content':[{'text':f"pw-watcher: watcher\npw-seat-token: {r['token']}\nlaunch"}]}}]
+        rollout.write_text(''.join(json.dumps(i)+'\n' for i in data))
+        return self.call('bind', record, '--thread', thread, '--rollout', rollout)
+
+    def test_owner_handshake_framing_ack_dedupe_and_stop(self):
+        record, r = self.start()
+        self.call('start', record, '--run', 'x', '--seat', 'A', '--cwd', self.root,
+                  '--worktree', self.root, '--inbox', r['inbox'], '--outbox', r['outbox'],
+                  '--model', 'fixture', '--effort', 'high', ok=False)
+        self.call('notify', record, '--seq', 1, ok=False)
+        r = self.bind(record, r)
+        self.call('notify', record, '--seq', 1, watcher='foreign', ok=False)
+        inbox, outbox = Path(r['inbox']), Path(r['outbox'])
+        initial = inbox.read_text()
+        inbox.write_text(self.message(2) + initial)
+        self.call('notify', record, '--seq', 2, ok=False)
+        outbox.write_text(self.message(1, 'ready'))
+        inbox.write_text('PAIR_MSG_BEGIN seq=3\nunfinished\n' + self.message(2) + initial)
+        self.call('notify', record, '--seq', 2, ok=False)
+        inbox.write_text(self.message(2) + initial)
+        self.call('notify', record, '--seq', 2)
+        self.call('notify', record, '--seq', 2)
+        calls = [json.loads(l) for l in (self.root/'calls.jsonl').read_text().splitlines()]
+        queued = [c for c in calls if c[0] == 'queue']
+        self.assertEqual(len(queued), 1)
+        self.assertEqual(queued[0][2], r['session_id'])
+        self.call('stop', record, ok=False)
+        self.assertEqual(self.call('stop', record, '--final-report-verified')['status'], 'retired')
+        self.call('notify', record, '--seq', 2, ok=False)
+
+    def test_two_seats_are_disjoint_and_bad_rollout_is_rejected(self):
+        records = [self.start(s) for s in ('A', 'B')]
+        first = self.bind(*records[0])
+        self.call('bind', records[1][0], '--thread', first['session_id'], '--rollout', first['rollout'], ok=False)
+        bound = [first, self.bind(*records[1])]
+        self.assertNotEqual(bound[0]['token'], bound[1]['token'])
+        self.assertNotEqual(bound[0]['session_id'], bound[1]['session_id'])
+        for (record, _), r in zip(records, bound):
+            self.call('bind', record, '--thread', bound[1]['session_id'], '--rollout', bound[1]['rollout'], ok=False)
+            Path(r['outbox']).write_text(self.message(1))
+            inbox = Path(r['inbox']); inbox.write_text(self.message(2) + inbox.read_text())
+            self.call('notify', record, '--seq', 2)
+        queued = [json.loads(l) for l in (self.root/'calls.jsonl').read_text().splitlines() if json.loads(l)[0]=='queue']
+        self.assertEqual({c[2] for c in queued}, {r['session_id'] for r in bound})
+
+    def test_dead_pane_is_not_replaced_or_notified(self):
+        record, r = self.start()
+        self.bind(record, r)
+        subprocess.run([r['tmux'], '-L', r['tmux_socket'], 'kill-session', '-t', r['tmux_session']], check=True)
+        self.call('notify', record, '--seq', 1, ok=False)
+
+
+    def test_wrong_run_and_seat_are_rejected_for_notify_and_stop(self):
+        record, r = self.start()
+        self.bind(record, r)
+        for action, flags in [('notify', ['--seq', 1]), ('stop', ['--final-report-verified'])]:
+            for key in ('run', 'seat'):
+                with self.subTest(action=action, key=key):
+                    self.call(action, record, *flags, '--'+key, 'other', ok=False)
+
+    def test_relative_edit_targets_real_linked_worktree_only(self):
+        main = self.root/'main'; worktree = self.root/'linked'
+        subprocess.run(['git', 'init', '-q', str(main)], check=True)
+        subprocess.run(['git', '-C', str(main), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'fixture'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(main), 'worktree', 'add', '-b', 'fixture', str(worktree)], check=True, capture_output=True)
+        self.bin.write_text('#!' + sys.executable + '\nimport os,sys,time\nfrom pathlib import Path\nos.chdir(sys.argv[sys.argv.index("-C")+1])\nPath("relative.txt").write_text("seat only")\ntime.sleep(300)\n')
+        record = self.root/'watcher'/self.run_id/'C.json';record.parent.mkdir(parents=True)
+        inbox=self.root/'in-C';outbox=self.root/'out-C';inbox.write_text('pw-watcher: watcher\n'+self.message(1));outbox.write_text('')
+        self.records.append(record)
+        self.call('start', record, '--cwd', main, '--worktree', worktree, '--inbox', inbox, '--outbox', outbox, '--codex', self.bin, '--model', 'fixture', '--effort', 'high')
+        import time
+        # Wait for the tmux shell to start the fake CLI, not a fixed startup delay.
+        for _ in range(250):
+            if (worktree/'relative.txt').exists() or (main/'relative.txt').exists():break
+            time.sleep(0.02)
+        self.assertTrue((worktree/'relative.txt').exists())
+        self.assertFalse((main/'relative.txt').exists())
+
+    TRUST_DIALOG = ("> You are in DIR\n\n  Do you trust the contents of this directory? Working with untrusted contents "
+                    "comes with higher risk of prompt injection.\n\n› 1. Yes, continue\n  2. No, quit\n\n  Press enter to continue\n")
+    LOGIN_SCREEN = "  Sign in to Codex\n\n› 1. Sign in with ChatGPT\n  2. Provide an API key\n\n  Press enter to continue\n"
+
+    def screen_fake(self, screen):
+        """A fake TUI that shows `screen`, waits for Enter, then prints the real header line."""
+        self.bin.write_text('#!' + sys.executable + '\nimport sys,time\nsys.stdout.write(' + repr(screen)
+                            + ')\nsys.stdout.flush()\nsys.stdin.readline()\nprint("| >_ OpenAI Codex (v0.0.0-fixture)", flush=True)\ntime.sleep(300)\n')
+
+    def repo_pair(self):
+        """A main checkout and its linked worktree, the only pair the helper auto-trusts."""
+        main = self.root / 'main'; worktree = self.root / 'linked'
+        subprocess.run(['git', 'init', '-q', str(main)], check=True)
+        subprocess.run(['git', '-C', str(main), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                        'commit', '--allow-empty', '-m', 'fixture'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(main), 'worktree', 'add', '-q', '-b', 'fixture', str(worktree)], check=True, capture_output=True)
+        return main, worktree
+
+    def start_in(self, cwd, worktree, seat='T', *extra):
+        inbox, outbox = self.root / f'in-{seat}', self.root / f'out-{seat}'
+        inbox.write_text('pw-watcher: watcher\n' + self.message(1)); outbox.write_text('')
+        record = self.root / 'watcher' / self.run_id / f'{seat}.json'; record.parent.mkdir(parents=True, exist_ok=True)
+        self.records.append(record)
+        r = self.call('start', record, '--run', self.run_id, '--seat', seat, '--cwd', cwd, '--worktree', worktree,
+                      '--inbox', inbox, '--outbox', outbox, '--codex', self.bin, '--model', 'fixture', '--effort', 'high', *extra)
+        return record, r
+
+    def screen(self, r):
+        return subprocess.run([r['tmux'], '-L', r['tmux_socket'], 'capture-pane', '-p', '-t', r['pane_id']],
+                              capture_output=True, text=True, check=True).stdout
+
+    def wait_screen(self, r, text):
+        import time
+        for _ in range(100):
+            if text in self.screen(r): break
+            time.sleep(0.05)
+        return self.screen(r)
+
+    def test_trust_dialog_is_accepted_for_a_linked_worktree_by_default(self):
+        self.screen_fake(self.TRUST_DIALOG)
+        main, worktree = self.repo_pair()
+        record, r = self.start_in(main, worktree)
+        self.assertEqual(r['trust_prompt'], 'accepted')
+        self.assertIn('OpenAI Codex', self.wait_screen(r, 'OpenAI Codex'))
+
+    def test_no_dialog_is_recorded_as_not_shown(self):
+        main, worktree = self.repo_pair()
+        record, r = self.start_in(main, worktree)
+        self.assertEqual(r['trust_prompt'], 'not-shown')
+
+    def test_unrelated_worktree_is_never_auto_trusted(self):
+        self.screen_fake(self.TRUST_DIALOG)
+        main, _ = self.repo_pair()
+        other = self.root / 'other'
+        subprocess.run(['git', 'init', '-q', str(other)], check=True)
+        record, r = self.start_in(main, other)
+        self.assertEqual(r['trust_prompt'], 'skipped-unrelated-worktree')
+        self.assertIn('1. Yes, continue', self.wait_screen(r, 'Do you trust'))
+        self.assertNotIn('OpenAI Codex', self.screen(r))
+        # Non-repository fixtures are unrelated too: nothing is auto-trusted outside a repository.
+        record2, r2 = self.start_in(self.root, self.root, 'U')
+        self.assertEqual(r2['trust_prompt'], 'skipped-unrelated-worktree')
+
+    def test_no_auto_trust_leaves_the_dialog_on_screen(self):
+        self.screen_fake(self.TRUST_DIALOG)
+        main, worktree = self.repo_pair()
+        record, r = self.start_in(main, worktree, 'T', '--no-auto-trust')
+        self.assertEqual(r['trust_prompt'], 'skipped')
+        self.assertIn('1. Yes, continue', self.wait_screen(r, 'Do you trust'))
+        self.assertNotIn('OpenAI Codex', self.screen(r))
+
+    def test_dialog_painted_in_two_steps_is_still_accepted(self):
+        main, worktree = self.repo_pair()
+        question, options = self.TRUST_DIALOG.split('\n\n› 1.', 1)
+        options = '\n\n› 1.' + options
+        self.bin.write_text('#!' + sys.executable + '\nimport sys,time\nsys.stdout.write(' + repr(question)
+                            + ')\nsys.stdout.flush()\ntime.sleep(1.5)\nsys.stdout.write(' + repr(options)
+                            + ')\nsys.stdout.flush()\nsys.stdin.readline()\nprint("| >_ OpenAI Codex (v0.0.0-fixture)", flush=True)\ntime.sleep(300)\n')
+        record, r = self.start_in(main, worktree, 'S')
+        self.assertEqual(r['trust_prompt'], 'accepted')
+        self.assertIn('OpenAI Codex', self.wait_screen(r, 'OpenAI Codex'))
+
+    def test_trust_timeout_must_be_finite(self):
+        main, worktree = self.repo_pair()
+        for value in ('nan', 'inf', '-1'):
+            with self.subTest(value=value):
+                inbox, outbox = self.root / f'in-{value}', self.root / f'out-{value}'
+                inbox.write_text('pw-watcher: watcher\n' + self.message(1)); outbox.write_text('')
+                record = self.root / 'watcher' / self.run_id / f'X{value}.json'; record.parent.mkdir(parents=True, exist_ok=True)
+                self.call('start', record, '--run', self.run_id, '--seat', f'X{value}', '--cwd', main, '--worktree', worktree,
+                          '--inbox', inbox, '--outbox', outbox, '--codex', self.bin, '--model', 'fixture', '--effort', 'high',
+                          '--trust-timeout', value, ok=False)
+                self.assertFalse(record.exists())
+
+    def test_other_prompts_are_never_answered(self):
+        main, worktree = self.repo_pair()
+        # A login screen: no Enter is sent, the watch times out as "unknown", the screen is untouched.
+        self.screen_fake(self.LOGIN_SCREEN)
+        record, r = self.start_in(main, worktree, 'L', '--trust-timeout', '1')
+        self.assertEqual(r['trust_prompt'], 'unknown')
+        self.assertIn('Sign in to Codex', self.wait_screen(r, 'Sign in'))
+        self.assertNotIn('OpenAI Codex', self.screen(r))
+        # The trust dialog with "No, quit" preselected: recognised as the dialog, but not answered.
+        self.screen_fake(self.TRUST_DIALOG.replace('› 1. Yes, continue\n  2. No, quit', '  1. Yes, continue\n› 2. No, quit'))
+        record, r = self.start_in(main, worktree, 'N', '--trust-timeout', '1')
+        self.assertEqual(r['trust_prompt'], 'unrecognized')
+        self.assertIn('No, quit', self.wait_screen(r, 'Do you trust'))
+        self.assertNotIn('OpenAI Codex', self.screen(r))
+
+if __name__ == '__main__':
+    unittest.main()

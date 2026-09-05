@@ -5,14 +5,14 @@ description: >-
   the read-only watcher; it launches one or more implementer sessions itself (real CLI sessions
   under tmux, each with its own model and effort), delivers their role briefs, verifies their
   reports against git, tests and their session logs, and runs the review gates. The user types
-  "/pair-watch:pair-watch <task>" in one chat only. Japanese cues: 「並行体制で」「pairで」
-  「席を立てて」「実装席を起動して」. Options on the same line: "— seat: <name>" to use a session
+  "/pair-watch:pair-watch TASK" in one chat only. Japanese cues: 「並行体制で」「pairで」
+  「席を立てて」「実装席を起動して」. Options on the same line: "— seat: NAME" to use a session
   the user already opened instead of launching one; "— peer: Codex CLI" for a Codex implementer
   (file inbox/outbox + rollout audit; started from a Codex chat, another Codex chat can be the
   implementer). Not for solo work or in-chat subagent delegation.
 metadata:
   language: en
-  tested-with: "Claude Code (SendMessage/ListAgents/Monitor, tmux-launched sessions on macOS), Codex CLI 0.147 file watch and rollout layout ~/.codex/sessions/YYYY/MM/DD/"
+  tested-with: "Claude Code (SendMessage/ListAgents/Monitor, tmux-launched sessions on macOS), Codex CLI 0.153.4 native queue and legacy file watch and rollout layout ~/.codex/sessions/YYYY/MM/DD/"
 ---
 
 # Pair-watch — a supervised pair launched from one chat
@@ -21,28 +21,23 @@ The user types `/pair-watch:pair-watch <one-line task>` in **one** chat. That ch
 **watcher**. It fixes the task and the seats, launches each implementer seat as a real CLI
 session, delivers the seat its role brief (from `assets/`), verifies every report against the
 artifacts, runs the review gates, relays the user's decisions, and retires the seats when the
-task ends. The watcher never edits source. Its only writes are the task contract, the transport C
-inbox, and a worktree or branch created on a seat's behalf.
+task ends. The watcher never edits source. Its writes are the task contract, inbox messages, initialization of empty outboxes,
+seat registries and channel ownership records, and worktrees or branches created on seats' behalf.
+After initialization, only each implementer writes its outbox.
 
-Two kinds of seat:
+Seat selection follows the invoking CLI unless `— peer: Codex CLI` selects Codex.
+Codex seats without `— seat:` are launched under tmux and notified through native
+`codex queue`; follow `references/codex-seat-launch.md` for steps 3–7. This supports
+Codex + Codex without Claude. Claude seats use `references/seat-launch.md` and SendMessage.
+An explicitly user-opened Codex `— seat: <thread UUID>` keeps the legacy file-watch route
+in `references/transport-codex.md`. A Claude `— seat: <name>` uses its ListAgents address.
 
-- **Claude seat (default)** — launched by the watcher under tmux with `claude --model … --effort
-  … --dangerously-skip-permissions`; SendMessage transport. No human watches its screen, so every
-  question it has goes to the watcher.
-- **Codex seat** (`— peer: Codex CLI`) — the user starts the Codex chat; Codex cannot join
-  SendMessage, so coordination uses sequenced files and rollout audit
-  (`references/transport-codex.md`, "transport C"). The watcher may be a Codex chat only when the
-  setup is started explicitly as Codex + Codex. Launching a Codex seat from the watcher has not
-  been verified and is not part of this procedure.
-
-Options on the invocation line:
-
-- `— seat: <name>` — use a session the user already opened, addressed by its ListAgents name,
-  instead of launching one. The watcher does not search for sessions: without this option it
-  launches; with it, it messages that one name.
-- `— implementer: <model>(<effort>)` — model and effort for launched seats (default `opus` at
-  `xhigh`).
-- `— peer: Codex CLI` — the implementer is a Codex chat (transport C).
+Model, effort and ordered fallback candidates live in `references/model-defaults.json`,
+overridden by the repository's tracked `pair-watch.settings.json`. Resolve with
+`python3 scripts/resolve-model.py --role implementer --primary CLI --repo REPO_ROOT` before launch.
+The model selection and availability rules in `references/codex-seat-launch.md` apply to
+both CLIs. `— implementer: <model>(<effort>)` is an explicit user override for that run;
+record it and do not invent additional fallback candidates for it.
 
 ## Language (read first)
 
@@ -59,6 +54,7 @@ Options on the invocation line:
 | `VERDICT: LGTM` / `VERDICT: CHANGES REQUESTED` | gate reviewer | gate result; a local commit is allowed only after `VERDICT: LGTM` |
 | `[AGENT-DECISION]` | implementer | marks a design decision that came from neither the user nor observed data (the Japanese kit's `[エージェント判断]` is the same tag; both forms are accepted) |
 | `PAIR_MSG_END seq=<N>` | transport C writer | completes one message; sequence is positive, strictly increasing per file |
+| `PAIR_MSG_BEGIN seq=<N>` | native Codex seat channel writer | opens one message on the watcher-launched route; every message there carries a matching begin/end pair (`references/codex-seat-launch.md`) |
 | `WATCH_ENDED role=implementer` | Codex implementer (outbox) | inbox file watch stopped after ~30 min; nudge the implementer chat |
 | `WATCH_ENDED role=watcher` | Codex watcher (own chat) | outbox file watch stopped after ~30 min; nudge the watcher chat |
 | `pair-inbox.md` / `pair-outbox.md` | watcher / implementer | transport C files under `_ai/tasks/<slug>/` in the main checkout |
@@ -69,13 +65,11 @@ Options on the invocation line:
 ## Procedure
 
 1. **Fix the task, the seats, and the options** — Parse the invocation line. No task → say
-   `ask-task` (`assets/user-prompts.md`) and stop. `— peer: Codex CLI` → the seat is Codex; from
-   step 3 on, follow transport C (`references/transport-codex.md`, steps 3C–6C) for the channel
-   setup, communication, and monitoring — the contract is still written first, as step 3 says;
-   the gates, reviewer selection and commit conditions below still apply. Invoked
-   inside a Codex chat without a Codex peer → say `codex-invoked` and stop (a Codex chat cannot
-   launch or message Claude sessions). Decide the seats: one seat per independent partition of
-   the work — disjoint branches, worktrees, and files — and one seat when the task does not
+   `ask-task` (`assets/user-prompts.md`) and stop. Select the route and settings above.
+   Native Codex seats follow `references/codex-seat-launch.md`; user-opened Codex seats
+   follow transport C. All routes write the contract before launching or messaging.
+   Decide one seat per independent partition with disjoint branches, worktrees and files;
+   use one seat when the task does not
    split. Reply in your own chat with one line per seat (label, scope, model and effort) and the
    model your own chat runs as. Done when: task, seats, and transport are stated in your chat.
 2. **Locate your own session log and address** — Claude: build and confirm
@@ -97,7 +91,7 @@ Options on the invocation line:
    route. For a code-changing task with launched seats, create the task branch and worktree
    now, on the seat's behalf, so the launch can point `--add-dir` at it; the brief then states
    that they exist. For a `— seat:` run the seat creates them itself (brief rule 1), and for a
-   Codex seat transport C step 3C takes over from here.
+   Codex seat the selected native or manual reference takes over from here.
    Then, once per run for launched Claude seats, check the three things a launch silently fails
    without (details and the check commands: `references/seat-launch.md`): the tmux allow rules
    in the user's `permissions.allow`; `"crossSessionInbound": "accept"` in
@@ -136,10 +130,10 @@ Options on the invocation line:
    answer proposals, verify each report with read-only git, grep, and test logs, read the seat's
    jsonl for claims no artifact can prove, and put anything that needs the user on a single
    pending list in your own chat. Gates, reviewer selection and commit conditions: Shared rules
-   below. The gate 3 reviewer's first choice is a different lineage from the implementer
-   (implementer Claude → Codex reviewer; implementer Codex → a fresh-context separate Claude
-   process; read-only tools only). When no other lineage is available, a fresh-context Codex
-   reviewer with read-only tools and only the review artifacts is the fallback, disclosed in the
+   below. Use project review settings when present; otherwise resolve `--role reviewer`
+   with the bundled resolver, passing `--primary` as the seat's primary CLI (the peer CLI
+   when `— peer:` selected one, else your own CLI), under the same availability rules. A fresh-context Codex or
+   Claude reviewer uses read-only tools and only review artifacts. Disclose fallback in the
    result. A review that ended in tool failure or without a `VERDICT` line does not count as a
    round. While waiting on a seat, do not wait indefinitely on receive: watch the seat's session
    log for a stall (no update for 15 minutes) with Monitor or an equivalent loop, and on a stall
@@ -154,7 +148,7 @@ Options on the invocation line:
    uncommitted state handed over in the task's `_ai/` record, never while it holds unreported
    work (`references/seat-launch.md`, "Retiring a seat"). A `— seat:` session is left running
    unless the user says otherwise. Write the completion report in your own chat and remove the
-   run's registry entries. push, PR, and merge always require the user's explicit permission.
+   run's Claude registry entries. Native Codex records remain retired for audit. push, PR, and merge always require the user's explicit permission.
 
 ## Seats
 
@@ -183,12 +177,9 @@ Options on the invocation line:
   claimed: the session the user named with `— seat:`, and a session the watcher launched and has
   not finished the handshake with. Fresh seats by default: a leftover seat is context already
   spent, not capacity. List leftovers to the user and leave them running.
-- **Model and effort.** Launched seats default to `opus` at `xhigh`; `— implementer:
-  <model>(<effort>)` on the invocation line overrides it. The watcher is the chat the user
-  already started, so this procedure cannot set its model or effort; a deep-reasoning model at
-  low effort is a recommendation for which chat to invoke from, not a value the skill applies.
-  Pair-watch reads no other tool's configuration for this. The first reply (step 1) states both,
-  so the user can restart from a different chat before the first launch.
+- **Model and effort.** Resolve explicit values and fallback order from the settings above.
+  The watcher is the chat the user already started, so the skill cannot change its model.
+  Report the actual watcher model and the resolved seat candidates before launching.
 - **What grows with N.** Reviewers are separate processes and run in parallel, so review
   throughput is not the limit. What bounds N: the task graph (seats need disjoint files and
   branches, so N is at most the number of independent tasks ready now), the decisions that queue
@@ -196,13 +187,15 @@ Options on the invocation line:
   stays light with four seats and several reviews in flight — it routes messages, launches
   reviewers, and forwards verdicts; the heavy lifting runs elsewhere. Do not add a second watcher
   for load; it splits the audit trail and the pending list for no gain.
-- **What to tell the user up front.** Launched seats run with `--dangerously-skip-permissions`;
+- **What to tell the user up front.** Launched Claude seats run with `--dangerously-skip-permissions`;
   invoking pair-watch is the opt-in for that. Decisions that need the user pile up on the
   pending list and are presented at an agreed checkpoint instead of one by one. The
   independence guarantee is per pair (watcher ↔ seat); seats are not independent of each other's
   mistakes when their scopes touch. Long runs should compact the watcher chat at a checkpoint.
 
-## Watcher restart and disappearance
+## Claude watcher restart and disappearance
+
+For native Codex seats use `references/codex-seat-launch.md`, including after restart.
 
 Two facts drive this section (observed live, 2026-09-04): a session's id and its jsonl survive
 closing and reopening the chat, but its messaging address does not — the socket
@@ -257,7 +250,7 @@ Both run several agents at once; they differ in what the agents are.
   is a first-class choice. Use pair-watch when the work is long, the user may add or redirect
   tasks while it runs, or a seat must hold uncommitted state across several instructions.
 - **Workflow agents are subagents driven by a script.** They also take a per-agent `model` and
-  `effort`, so implementers at `opus`/`xhigh` are possible there too. But the agents are Claude
+  `effort`, so separately configured implementers are possible there too. But the agents are Claude
   models only: a Codex reviewer is reachable only when an agent shells out to `codex exec`, and
   no agent is a chat the user can join. Changing course means editing the script and resuming.
   Use Workflow for a batch of same-shaped, pre-scoped work — N translations compared on the same
@@ -314,7 +307,7 @@ Both run several agents at once; they differ in what the agents are.
   minutes) and `watcher.json` names no live process, or the send to the socket it names fails
   too: write the current state into the task record and stop, per brief rule 11. No commit, merge, external request, deletion, or message
   to any other session until a watcher citing this run's `pw-watcher:` id makes contact.
-- Codex-specific stop conditions: follow transport C.
+- Codex-specific stop conditions: follow the selected native launch or legacy transport C reference.
 
 ## Shared rules (inlined minimum)
 

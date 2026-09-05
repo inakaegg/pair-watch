@@ -157,8 +157,10 @@ reviewer at required gates.
 - After the roughly 30-minute cap, one manual nudge is required for the role named in its chat.
 - Environments that require approval for every wait command fall back to manual nudges. The skill
   never bypasses approval.
-- Same-lineage implementation and review can share blind spots. Claude remains the first reviewer
-  choice for a Codex implementer; a fresh read-only Codex reviewer is the disclosed fallback while
-  Claude is unavailable.
+- Same-lineage implementation and review can share blind spots. The bundled default nevertheless
+  reviews on the seat's own CLI (the primary CLI's candidates come first in the reviewer list, so
+  the review runs on the subscription that seat already uses), with the other CLI as the fallback;
+  a project's review rules, such as agent-kit's other-lineage requirement for heavy-risk work,
+  take precedence over this default.
 - Codex watcher + Claude implementer remains unsupported because the Claude peer already has the
   receive-driven SendMessage path and the combination does not enable Codex + Codex operation.

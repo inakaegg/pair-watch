@@ -1,0 +1,36 @@
+{
+  "name": "pair-watch",
+  "version": "0.5.0",
+  "description": "Supervised pair for coding agents, launched from one chat: the invoking chat is the read-only watcher and starts implementer sessions itself (tmux), verifies their reports against git, tests and session logs, and runs the review gates. Claude seats via SendMessage; Codex seats via native tmux launch, queue notifications and sequenced files, including Codex + Codex.",
+  "author": {
+    "name": "inakaegg"
+  },
+  "homepage": "https://github.com/inakaegg/pair-watch",
+  "repository": "https://github.com/inakaegg/pair-watch",
+  "license": "MIT",
+  "keywords": [
+    "pair",
+    "watcher",
+    "review",
+    "multi-agent",
+    "tmux",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Pair-watch",
+    "shortDescription": "Supervised coding-agent pair started from one chat",
+    "longDescription": "The chat that invokes it becomes a read-only watcher that runs implementer seats, checks their reports against git, tests and session logs, and runs the review gates before anything is committed. Codex seats use sequenced inbox/outbox files and rollout audit, including Codex + Codex.",
+    "developerName": "inakaegg",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/inakaegg/pair-watch",
+    "defaultPrompt": [
+      "$pair-watch <one-line task> \u2014 peer: Codex CLI"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
 interface:
   display_name: "Pair-watch"
-  short_description: "Supervised pair launched from one chat: the invoking chat watches, launches implementer seats (Claude via tmux; Codex via sequenced files, including Codex + Codex)"
-  default_prompt: "Start Pair-watch from this chat. If this is Codex and the user explicitly names a Codex peer, act as the Codex watcher and use the sequenced file transport. Otherwise say that a Codex chat cannot launch or message Claude sessions and ask the user to start pair-watch from a Claude chat."
+  short_description: "Supervised coding from one chat with native Claude or Codex seats"
+  default_prompt: "Start Pair-watch from this chat as the read-only watcher. A Codex watcher launches Codex implementers using the native seat procedure and settings. Use the legacy file-watch route only for an explicitly named user-opened Codex thread."

@@ -1,2 +1,5 @@
 .worktrees/
 _ai/
+
+# Python validation and test bytecode
+__pycache__/

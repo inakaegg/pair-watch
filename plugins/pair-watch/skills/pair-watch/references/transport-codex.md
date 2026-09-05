@@ -1,3 +1,8 @@
+# User-opened Codex seats (legacy file watch)
+
+Use this route only with an explicit `— seat: <thread UUID>`. For watcher-launched
+Codex seats use `codex-seat-launch.md`; they end each turn and use native queue notifications.
+
 # Transport for a Codex peer — sequenced files + rollout audit
 
 When the implementer seat is an interactive Codex CLI chat, this replaces **only the launch,

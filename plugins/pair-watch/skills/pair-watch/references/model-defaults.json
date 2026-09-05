@@ -1,0 +1,7 @@
+{
+  "implementer": {
+    "codex": ["codex:gpt-5.6-sol(medium)", "claude:opus(medium)"],
+    "claude": ["claude:opus(medium)", "codex:gpt-5.6-sol(medium)"]
+  },
+  "reviewer": ["codex:gpt-5.6-sol(medium)", "claude:opus(medium)"]
+}
